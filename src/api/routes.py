@@ -61,6 +61,37 @@ async def retrieve_image_data(url: str) -> Optional[bytes]:
     return None
 
 
+def _resize_image_compress_only(image: Image.Image, max_long_side: int = 1920) -> Image.Image:
+    """只压缩图片长边，不进行裁切，保留原始宽高比
+    
+    Args:
+        image: PIL Image 对象
+        max_long_side: 最大长边尺寸，默认 1920px
+        
+    Returns:
+        压缩后的图片对象（保留原始宽高比）
+    """
+    width, height = image.size
+    long_side = max(width, height)
+    
+    # 如果长边不超过限制，直接返回
+    if long_side <= max_long_side:
+        return image
+    
+    # 计算缩放比例
+    scale = max_long_side / long_side
+    new_width = int(width * scale)
+    new_height = int(height * scale)
+    
+    # 使用 LANCZOS 重采样算法确保高质量
+    try:
+        resample = Image.Resampling.LANCZOS
+    except AttributeError:
+        resample = Image.LANCZOS
+    
+    return image.resize((new_width, new_height), resample=resample)
+
+
 def _resize_image_if_needed(image: Image.Image, max_size: int = 1920) -> Image.Image:
     """等比例压缩并裁切图片到16:9或9:16比例
     - 竖图（9:16）：压缩并裁切成 864*1536（短边864，长边1536，上下居中裁切）
@@ -135,11 +166,12 @@ def _resize_image_if_needed(image: Image.Image, max_size: int = 1920) -> Image.I
     return resized_image
 
 
-def _process_image_bytes(image_bytes: bytes) -> bytes:
+def _process_image_bytes(image_bytes: bytes, model: str = None) -> bytes:
     """处理图片字节数据：压缩裁切后返回JPEG格式字节
     
     Args:
         image_bytes: 原始图片字节数据
+        model: 模型名称，用于决定处理方式
         
     Returns:
         处理后的JPEG格式字节数据
@@ -158,8 +190,11 @@ def _process_image_bytes(image_bytes: bytes) -> bytes:
         elif image.mode != 'RGB':
             image = image.convert('RGB')
         
-        # 调整尺寸和裁切
-        processed_image = _resize_image_if_needed(image)
+        # 调整尺寸：gemini-3.0-pro-image 只压缩不裁切
+        if model and "gemini-3.0-pro-image" in model:
+            processed_image = _resize_image_compress_only(image)
+        else:
+            processed_image = _resize_image_if_needed(image)
         
         # 转换回字节
         output_buffer = io.BytesIO()
@@ -234,14 +269,14 @@ async def create_chat_completion(
                             image_base64 = match.group(1)
                             image_bytes = base64.b64decode(image_base64)
                             # 压缩裁切图片
-                            processed_bytes = _process_image_bytes(image_bytes)
+                            processed_bytes = _process_image_bytes(image_bytes, model=request.model)
                             images.append(processed_bytes)
                     elif image_url.startswith("http"):
                         # Download image from URL
                         downloaded_bytes = await retrieve_image_data(image_url)
                         if downloaded_bytes:
                             # 压缩裁切图片
-                            processed_bytes = _process_image_bytes(downloaded_bytes)
+                            processed_bytes = _process_image_bytes(downloaded_bytes, model=request.model)
                             images.append(processed_bytes)
                             debug_logger.log_info(f"[IMAGE] 从URL下载并处理图片: {image_url}")
                         else:
