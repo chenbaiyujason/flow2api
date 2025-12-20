@@ -70,37 +70,6 @@ MODEL_CONFIG = {
         "supports_images": False
     },
 
-    # veo_2_1_fast_d_15_t2v (需要新增横竖屏)
-    "veo_2_1_fast_d_15_t2v_portrait": {
-        "type": "video",
-        "video_type": "t2v",
-        "model_key": "veo_2_1_fast_d_15_t2v",
-        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
-        "supports_images": False
-    },
-    "veo_2_1_fast_d_15_t2v_landscape": {
-        "type": "video",
-        "video_type": "t2v",
-        "model_key": "veo_2_1_fast_d_15_t2v",
-        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
-        "supports_images": False
-    },
-
-    # veo_2_0_t2v (需要新增横竖屏)
-    "veo_2_0_t2v_portrait": {
-        "type": "video",
-        "video_type": "t2v",
-        "model_key": "veo_2_0_t2v",
-        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
-        "supports_images": False
-    },
-    "veo_2_0_t2v_landscape": {
-        "type": "video",
-        "video_type": "t2v",
-        "model_key": "veo_2_0_t2v",
-        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
-        "supports_images": False
-    },
 
     # ========== 首尾帧模型 (I2V - Image to Video) ==========
     # 支持1-2张图片：1张作为首帧，2张作为首尾帧
