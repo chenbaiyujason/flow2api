@@ -65,7 +65,7 @@ MODEL_CONFIG = {
     "veo_3_1_t2v_fast_landscape": {
         "type": "video",
         "video_type": "t2v",
-        "model_key": "veo_3_1_t2v_fast",
+        "model_key": "veo_3_1_t2v_fast_landscape",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": False
     },
@@ -78,7 +78,7 @@ MODEL_CONFIG = {
     "veo_3_1_i2v_s_fast_fl_portrait": {
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fast_fl",
+        "model_key": "veo_3_1_i2v_s_fast_fl_portrait",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": True,
         "min_images": 1,
@@ -87,7 +87,7 @@ MODEL_CONFIG = {
     "veo_3_1_i2v_s_fast_fl_landscape": {
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fast_fl",
+        "model_key": "veo_3_1_i2v_s_fast_fl_landscape",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
         "min_images": 1,
@@ -103,7 +103,7 @@ MODEL_CONFIG = {
     "veo_3_0_r2v_fast_portrait": {
         "type": "video",
         "video_type": "r2v",
-        "model_key": "veo_3_0_r2v_fast",
+        "model_key": "veo_3_0_r2v_fast_portrait",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": True,
         "min_images": 0,
@@ -112,7 +112,7 @@ MODEL_CONFIG = {
     "veo_3_0_r2v_fast_landscape": {
         "type": "video",
         "video_type": "r2v",
-        "model_key": "veo_3_0_r2v_fast",
+        "model_key": "veo_3_0_r2v_fast_landscape",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
         "min_images": 0,
@@ -127,14 +127,14 @@ MODEL_CONFIG = {
     "veo_3_1_t2v_portrait": {
         "type": "video",
         "video_type": "t2v",
-        "model_key": "veo_3_1_t2v",
+        "model_key": "veo_3_1_t2v_portrait",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": False
     },
     "veo_3_1_t2v_landscape": {
         "type": "video",
         "video_type": "t2v",
-        "model_key": "veo_3_1_t2v",
+        "model_key": "veo_3_1_t2v_landscape",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": False
     },
@@ -153,7 +153,7 @@ MODEL_CONFIG = {
     "veo_3_1_i2v_s_landscape": {
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s",
+        "model_key": "veo_3_1_i2v_s_landscape",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
         "min_images": 1,
@@ -165,7 +165,7 @@ MODEL_CONFIG = {
     "veo_3_1_i2v_s_fl_portrait": {
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_portrait_fl",
+        "model_key": "veo_3_1_i2v_s_fl_portrait",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": True,
         "min_images": 2,
@@ -174,7 +174,7 @@ MODEL_CONFIG = {
     "veo_3_1_i2v_s_fl_landscape": {
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fl",
+        "model_key": "veo_3_1_i2v_s_fl_landscape",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
         "min_images": 2,
