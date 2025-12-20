@@ -6,6 +6,7 @@ from .load_balancer import LoadBalancer
 from .concurrency_manager import ConcurrencyManager
 from .token_manager import TokenManager
 from .generation_handler import GenerationHandler
+from .batch_request_manager import BatchRequestManager
 
 __all__ = [
     "FlowClient",
@@ -13,5 +14,7 @@ __all__ = [
     "LoadBalancer",
     "ConcurrencyManager",
     "TokenManager",
-    "GenerationHandler"
+    "GenerationHandler",
+    "BatchRequestManager"
 ]
+

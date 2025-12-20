@@ -13,6 +13,7 @@ from .services.proxy_manager import ProxyManager
 from .services.token_manager import TokenManager
 from .services.load_balancer import LoadBalancer
 from .services.concurrency_manager import ConcurrencyManager
+from .services.batch_request_manager import BatchRequestManager
 from .services.generation_handler import GenerationHandler
 from .api import routes, admin
 
@@ -139,13 +140,15 @@ flow_client = FlowClient(proxy_manager)
 token_manager = TokenManager(db, flow_client)
 concurrency_manager = ConcurrencyManager()
 load_balancer = LoadBalancer(token_manager, concurrency_manager)
+batch_manager = BatchRequestManager(flow_client)
 generation_handler = GenerationHandler(
     flow_client,
     token_manager,
     load_balancer,
     db,
     concurrency_manager,
-    proxy_manager  # 添加 proxy_manager 参数
+    proxy_manager,
+    batch_manager  # 添加 batch_manager 参数
 )
 
 # Set dependencies

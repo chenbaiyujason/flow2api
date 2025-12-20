@@ -181,17 +181,19 @@ MODEL_CONFIG = {
 class GenerationHandler:
     """统一生成处理器"""
 
-    def __init__(self, flow_client, token_manager, load_balancer, db, concurrency_manager, proxy_manager):
+    def __init__(self, flow_client, token_manager, load_balancer, db, concurrency_manager, proxy_manager, batch_manager=None):
         self.flow_client = flow_client
         self.token_manager = token_manager
         self.load_balancer = load_balancer
         self.db = db
         self.concurrency_manager = concurrency_manager
+        self.batch_manager = batch_manager  # 批量请求管理器
         self.file_cache = FileCache(
             cache_dir="tmp",
             default_timeout=config.cache_timeout,
             proxy_manager=proxy_manager
         )
+
 
     async def check_token_availability(self, is_image: bool, is_video: bool) -> bool:
         """检查Token可用性
@@ -414,22 +416,52 @@ class GenerationHandler:
             if stream:
                 yield self._create_stream_chunk("正在生成图片...\n")
 
-            result = await self.flow_client.generate_image(
-                at=token.at,
-                project_id=project_id,
-                prompt=prompt,
-                model_name=model_config["model_name"],
-                aspect_ratio=model_config["aspect_ratio"],
-                image_inputs=image_inputs
-            )
+            import random
+            
+            # 构建请求数据
+            request_data = {
+                "seed": random.randint(1, 99999),
+                "imageModelName": model_config["model_name"],
+                "imageAspectRatio": model_config["aspect_ratio"],
+                "prompt": prompt,
+                "imageInputs": image_inputs
+            }
+            
+            # 使用批量管理器或直接调用
+            if self.batch_manager:
+                # 通过批量管理器提交请求
+                future = await self.batch_manager.submit_image_request(
+                    token_id=token.id,
+                    at_token=token.at,
+                    project_id=project_id,
+                    request_data=request_data,
+                    user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
+                )
+                
+                # 等待批量请求结果
+                media_result = await future
+                
+                # 提取URL
+                image_url = media_result["image"]["generatedImage"]["fifeUrl"]
+            else:
+                # 回退到直接调用 (兼容无批量管理器的情况)
+                result = await self.flow_client.generate_image(
+                    at=token.at,
+                    project_id=project_id,
+                    prompt=prompt,
+                    model_name=model_config["model_name"],
+                    aspect_ratio=model_config["aspect_ratio"],
+                    image_inputs=image_inputs
+                )
+                
+                # 提取URL
+                media = result.get("media", [])
+                if not media:
+                    yield self._create_error_response("生成结果为空")
+                    return
+                
+                image_url = media[0]["image"]["generatedImage"]["fifeUrl"]
 
-            # 提取URL
-            media = result.get("media", [])
-            if not media:
-                yield self._create_error_response("生成结果为空")
-                return
-
-            image_url = media[0]["image"]["generatedImage"]["fifeUrl"]
 
             # 缓存图片 (如果启用)
             local_url = image_url
@@ -567,57 +599,96 @@ class GenerationHandler:
             if stream:
                 yield self._create_stream_chunk("提交视频生成任务...\n")
 
-            # I2V: 首尾帧生成
+            import random
+            import uuid
+            
+            # 构建请求数据
+            scene_id = str(uuid.uuid4())
+            request_data = {
+                "aspectRatio": model_config["aspect_ratio"],
+                "seed": random.randint(1, 99999),
+                "textInput": {
+                    "prompt": prompt
+                },
+                "videoModelKey": model_config["model_key"],
+                "metadata": {
+                    "sceneId": scene_id
+                }
+            }
+            
+            # 根据视频类型确定端点和添加额外字段
             if video_type == "i2v" and start_media_id:
                 if end_media_id:
-                    # 有首尾帧
-                    result = await self.flow_client.generate_video_start_end(
-                        at=token.at,
-                        project_id=project_id,
-                        prompt=prompt,
+                    # 首尾帧
+                    endpoint = "batchAsyncGenerateVideoStartAndEndImage"
+                    request_data["startImage"] = {"mediaId": start_media_id}
+                    request_data["endImage"] = {"mediaId": end_media_id}
+                else:
+                    # 仅首帧
+                    endpoint = "batchAsyncGenerateVideoStartImage"
+                    request_data["startImage"] = {"mediaId": start_media_id}
+            elif video_type == "r2v" and reference_images:
+                # 多参考图
+                endpoint = "batchAsyncGenerateVideoReferenceImages"
+                request_data["referenceImages"] = reference_images
+            else:
+                # T2V 文生视频
+                endpoint = "batchAsyncGenerateVideoText"
+            
+            # 使用批量管理器或直接调用
+            if self.batch_manager:
+                # 通过批量管理器提交请求
+                future = await self.batch_manager.submit_video_request(
+                    token_id=token.id,
+                    at_token=token.at,
+                    project_id=project_id,
+                    endpoint=endpoint,
+                    request_data=request_data,
+                    user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
+                )
+                
+                # 等待批量请求结果
+                operation = await future
+                
+                # 构建 operations 列表格式
+                operations = [operation]
+            else:
+                # 回退到直接调用 (兼容无批量管理器的情况)
+                if video_type == "i2v" and start_media_id:
+                    if end_media_id:
+                        result = await self.flow_client.generate_video_start_end(
+                            at=token.at, project_id=project_id, prompt=prompt,
+                            model_key=model_config["model_key"],
+                            aspect_ratio=model_config["aspect_ratio"],
+                            start_media_id=start_media_id, end_media_id=end_media_id,
+                            user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
+                        )
+                    else:
+                        result = await self.flow_client.generate_video_start_image(
+                            at=token.at, project_id=project_id, prompt=prompt,
+                            model_key=model_config["model_key"],
+                            aspect_ratio=model_config["aspect_ratio"],
+                            start_media_id=start_media_id,
+                            user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
+                        )
+                elif video_type == "r2v" and reference_images:
+                    result = await self.flow_client.generate_video_reference_images(
+                        at=token.at, project_id=project_id, prompt=prompt,
                         model_key=model_config["model_key"],
                         aspect_ratio=model_config["aspect_ratio"],
-                        start_media_id=start_media_id,
-                        end_media_id=end_media_id,
+                        reference_images=reference_images,
                         user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
                     )
                 else:
-                    # 只有首帧
-                    result = await self.flow_client.generate_video_start_image(
-                        at=token.at,
-                        project_id=project_id,
-                        prompt=prompt,
+                    result = await self.flow_client.generate_video_text(
+                        at=token.at, project_id=project_id, prompt=prompt,
                         model_key=model_config["model_key"],
                         aspect_ratio=model_config["aspect_ratio"],
-                        start_media_id=start_media_id,
                         user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
                     )
-
-            # R2V: 多图生成
-            elif video_type == "r2v" and reference_images:
-                result = await self.flow_client.generate_video_reference_images(
-                    at=token.at,
-                    project_id=project_id,
-                    prompt=prompt,
-                    model_key=model_config["model_key"],
-                    aspect_ratio=model_config["aspect_ratio"],
-                    reference_images=reference_images,
-                    user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
-                )
-
-            # T2V 或 R2V无图: 纯文本生成
-            else:
-                result = await self.flow_client.generate_video_text(
-                    at=token.at,
-                    project_id=project_id,
-                    prompt=prompt,
-                    model_key=model_config["model_key"],
-                    aspect_ratio=model_config["aspect_ratio"],
-                    user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
-                )
+                operations = result.get("operations", [])
 
             # 获取task_id和operations
-            operations = result.get("operations", [])
             if not operations:
                 yield self._create_error_response("生成任务创建失败")
                 return
@@ -643,6 +714,7 @@ class GenerationHandler:
 
             async for chunk in self._poll_video_result(token, operations, stream):
                 yield chunk
+
 
         finally:
             # 释放并发槽位
