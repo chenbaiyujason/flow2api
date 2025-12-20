@@ -213,6 +213,29 @@ class Config:
             self._config["captcha"] = {}
         self._config["captcha"]["yescaptcha_base_url"] = base_url
 
+    # Batch configuration
+    @property
+    def batch_max_size(self) -> int:
+        """Get batch max size (number of requests per batch)"""
+        return self._config.get("batch", {}).get("max_size", 4)
+
+    def set_batch_max_size(self, size: int):
+        """Set batch max size"""
+        if "batch" not in self._config:
+            self._config["batch"] = {}
+        self._config["batch"]["max_size"] = size
+
+    @property
+    def batch_collect_window_ms(self) -> int:
+        """Get batch collect window in milliseconds"""
+        return self._config.get("batch", {}).get("collect_window_ms", 300)
+
+    def set_batch_collect_window_ms(self, window_ms: int):
+        """Set batch collect window in milliseconds"""
+        if "batch" not in self._config:
+            self._config["batch"] = {}
+        self._config["batch"]["collect_window_ms"] = window_ms
+
 
 # Global config instance
 config = Config()

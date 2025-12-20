@@ -54,6 +54,32 @@ class DebugLogger:
         """Write separator line"""
         self.logger.info(char * length)
 
+    def _sanitize_body(self, body: Any) -> Any:
+        """Remove large base64 image data from body for logging"""
+        if body is None:
+            return None
+        if isinstance(body, dict):
+            sanitized = {}
+            for key, value in body.items():
+                # Skip encodedImage and rawImageBytes fields
+                if key in ("encodedImage", "rawImageBytes"):
+                    sanitized[key] = "<base64 image data omitted>"
+                elif key == "imageInput" and isinstance(value, dict):
+                    # Recursively sanitize imageInput
+                    sanitized[key] = self._sanitize_body(value)
+                elif key == "imageInputs" and isinstance(value, list):
+                    # Recursively sanitize each item in imageInputs
+                    sanitized[key] = [self._sanitize_body(item) for item in value]
+                elif isinstance(value, (dict, list)):
+                    sanitized[key] = self._sanitize_body(value)
+                else:
+                    sanitized[key] = value
+            return sanitized
+        elif isinstance(body, list):
+            return [self._sanitize_body(item) for item in body]
+        else:
+            return body
+
     def log_request(
         self,
         method: str,
@@ -102,8 +128,9 @@ class DebugLogger:
             # Body
             if body is not None:
                 self.logger.info("\n📦 Request Body:")
-                if isinstance(body, (dict, list)):
-                    body_str = json.dumps(body, indent=2, ensure_ascii=False)
+                sanitized_body = self._sanitize_body(body)
+                if isinstance(sanitized_body, (dict, list)):
+                    body_str = json.dumps(sanitized_body, indent=2, ensure_ascii=False)
                     self.logger.info(body_str)
                 else:
                     self.logger.info(str(body))

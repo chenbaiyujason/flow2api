@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from typing import Optional, List
 from pathlib import Path
-from .models import Token, TokenStats, Task, RequestLog, AdminConfig, ProxyConfig, GenerationConfig, CacheConfig, Project, CaptchaConfig
+from .models import Token, TokenStats, Task, RequestLog, AdminConfig, ProxyConfig, GenerationConfig, CacheConfig, Project, CaptchaConfig, BatchConfig
 
 
 class Database:
@@ -458,6 +458,17 @@ class Database:
                     page_action TEXT DEFAULT 'FLOW_GENERATION',
                     browser_proxy_enabled BOOLEAN DEFAULT 0,
                     browser_proxy_url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Batch config table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS batch_config (
+                    id INTEGER PRIMARY KEY DEFAULT 1,
+                    max_size INTEGER DEFAULT 4,
+                    collect_window_ms INTEGER DEFAULT 300,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -1019,6 +1030,12 @@ class Database:
             config.set_yescaptcha_api_key(captcha_config.yescaptcha_api_key)
             config.set_yescaptcha_base_url(captcha_config.yescaptcha_base_url)
 
+        # Reload batch config
+        batch_config = await self.get_batch_config()
+        if batch_config:
+            config.set_batch_max_size(batch_config.max_size)
+            config.set_batch_collect_window_ms(batch_config.collect_window_ms)
+
     # Cache config operations
     async def get_cache_config(self) -> CacheConfig:
         """Get cache configuration"""
@@ -1172,5 +1189,48 @@ class Database:
                     INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, browser_proxy_enabled, browser_proxy_url)
                     VALUES (1, ?, ?, ?, ?, ?)
                 """, (new_method, new_api_key, new_base_url, new_proxy_enabled, new_proxy_url))
+
+            await db.commit()
+
+    # Batch config operations
+    async def get_batch_config(self) -> BatchConfig:
+        """Get batch configuration"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM batch_config WHERE id = 1")
+            row = await cursor.fetchone()
+            if row:
+                return BatchConfig(**dict(row))
+            return BatchConfig(max_size=4, collect_window_ms=300)
+
+    async def update_batch_config(
+        self,
+        max_size: int = None,
+        collect_window_ms: int = None
+    ):
+        """Update batch configuration"""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM batch_config WHERE id = 1")
+            row = await cursor.fetchone()
+
+            if row:
+                current = dict(row)
+                new_max_size = max_size if max_size is not None else current.get("max_size", 4)
+                new_collect_window_ms = collect_window_ms if collect_window_ms is not None else current.get("collect_window_ms", 300)
+
+                await db.execute("""
+                    UPDATE batch_config
+                    SET max_size = ?, collect_window_ms = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = 1
+                """, (new_max_size, new_collect_window_ms))
+            else:
+                new_max_size = max_size if max_size is not None else 4
+                new_collect_window_ms = collect_window_ms if collect_window_ms is not None else 300
+
+                await db.execute("""
+                    INSERT INTO batch_config (id, max_size, collect_window_ms)
+                    VALUES (1, ?, ?)
+                """, (new_max_size, new_collect_window_ms))
 
             await db.commit()

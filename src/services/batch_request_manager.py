@@ -6,6 +6,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Tuple, Callable
 from ..core.logger import debug_logger
+from ..core.config import config
 
 
 @dataclass
@@ -40,14 +41,11 @@ class BatchRequestManager:
     
     功能:
     - 按 (token_id, project_id, endpoint) 分组收集请求
-    - 最多4个请求合并为一个批次
+    - 最多4个请求合并为一个批次 (可通过配置调整)
     - 共享同一个 recaptcha_token
-    - 50ms 收集窗口或达到4个时触发发送
+    - 收集窗口时间可配置 (默认300ms)
     - 视频异步轮询，图片同步返回
     """
-    
-    MAX_BATCH_SIZE = 4
-    COLLECT_WINDOW_MS = 300   # 收集窗口时间(毫秒)
     
     # 端点常量
     ENDPOINT_IMAGE = "batchGenerateImages"
@@ -55,6 +53,16 @@ class BatchRequestManager:
     ENDPOINT_VIDEO_START_IMAGE = "batchAsyncGenerateVideoStartImage"
     ENDPOINT_VIDEO_START_END = "batchAsyncGenerateVideoStartAndEndImage"
     ENDPOINT_VIDEO_REFERENCE = "batchAsyncGenerateVideoReferenceImages"
+    
+    @property
+    def MAX_BATCH_SIZE(self) -> int:
+        """从配置获取最大批次大小"""
+        return config.batch_max_size
+    
+    @property
+    def COLLECT_WINDOW_MS(self) -> int:
+        """从配置获取收集窗口时间(毫秒)"""
+        return config.batch_collect_window_ms
     
     def __init__(self, flow_client):
         """

@@ -878,3 +878,42 @@ async def get_captcha_config(token: str = Depends(verify_admin_token)):
         "browser_proxy_enabled": captcha_config.browser_proxy_enabled,
         "browser_proxy_url": captcha_config.browser_proxy_url or ""
     }
+
+
+# ========== Batch Configuration Endpoints ==========
+
+@router.get("/api/batch/config")
+async def get_batch_config(token: str = Depends(verify_admin_token)):
+    """Get batch configuration"""
+    batch_config = await db.get_batch_config()
+    return {
+        "success": True,
+        "config": {
+            "max_size": batch_config.max_size,
+            "collect_window_ms": batch_config.collect_window_ms
+        }
+    }
+
+
+@router.post("/api/batch/config")
+async def update_batch_config(
+    request: dict,
+    token: str = Depends(verify_admin_token)
+):
+    """Update batch configuration"""
+    max_size = request.get("max_size")
+    collect_window_ms = request.get("collect_window_ms")
+
+    # Validate values
+    if max_size is not None and (max_size < 1 or max_size > 10):
+        return {"success": False, "message": "max_size 必须在 1-10 之间"}
+    if collect_window_ms is not None and (collect_window_ms < 50 or collect_window_ms > 5000):
+        return {"success": False, "message": "collect_window_ms 必须在 50-5000 之间"}
+
+    await db.update_batch_config(max_size=max_size, collect_window_ms=collect_window_ms)
+
+    # 🔥 Hot reload: sync database config to memory
+    await db.reload_config_to_memory()
+
+    return {"success": True, "message": "批量配置更新成功"}
+
