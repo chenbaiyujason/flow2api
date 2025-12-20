@@ -6,8 +6,10 @@ import base64
 import re
 import json
 import time
+import io
 from urllib.parse import urlparse
 from curl_cffi.requests import AsyncSession
+from PIL import Image
 from ..core.auth import verify_api_key_header
 from ..core.models import ChatCompletionRequest
 from ..services.generation_handler import GenerationHandler, MODEL_CONFIG
@@ -57,6 +59,118 @@ async def retrieve_image_data(url: str) -> Optional[bytes]:
         debug_logger.log_error(f"[CONTEXT] 图片下载异常: {str(e)}")
 
     return None
+
+
+def _resize_image_if_needed(image: Image.Image, max_size: int = 1920) -> Image.Image:
+    """等比例压缩并裁切图片到16:9或9:16比例
+    - 竖图（9:16）：压缩并裁切成 864*1536（短边864，长边1536，上下居中裁切）
+    - 横图（16:9）：压缩并裁切成 1536*864（短边864，长边1536，左右居中裁切）
+    
+    Args:
+        image: PIL Image 对象
+        max_size: 最大尺寸（长边），默认 1920px（未使用，保留兼容性）
+        
+    Returns:
+        压缩并裁切后的图片对象
+    """
+    width, height = image.size
+    is_portrait = height > width  # 竖图
+    
+    # 目标尺寸：长边1536，短边864（16:9或9:16比例）
+    target_long = 1920
+    target_short = 1080  # 1536 * 9 / 16 = 864
+    
+    # 目标尺寸
+    if is_portrait:
+        # 竖图（9:16）：864*1536
+        target_width = target_short
+        target_height = target_long
+    else:
+        # 横图（16:9）：1536*864
+        target_width = target_long
+        target_height = target_short
+    
+    # 如果图片已经符合目标尺寸，直接返回
+    if width == target_width and height == target_height:
+        return image
+    
+    # 计算缩放比例：先缩放到短边为864
+    short_side = min(width, height)
+    scale = target_short / short_side
+    
+    # 计算缩放后的尺寸
+    new_width = int(width * scale)
+    new_height = int(height * scale)
+    
+    # 使用 LANCZOS 重采样算法确保高质量，避免撕裂和伪影
+    # 兼容不同版本的 Pillow
+    try:
+        resample = Image.Resampling.LANCZOS
+    except AttributeError:
+        resample = Image.LANCZOS
+    
+    # 先等比例缩放
+    resized_image = image.resize((new_width, new_height), resample=resample)
+    
+    # 如果缩放后的长边超过目标长边，需要居中裁切
+    if is_portrait:
+        # 竖图：如果高度超过1536，需要上下居中裁切
+        if new_height > target_long:
+            # 计算裁切位置（居中）
+            top = (new_height - target_long) // 2
+            left = 0
+            right = target_short
+            bottom = top + target_long
+            resized_image = resized_image.crop((left, top, right, bottom))
+    else:
+        # 横图：如果宽度超过1536，需要左右居中裁切
+        if new_width > target_long:
+            # 计算裁切位置（居中）
+            left = (new_width - target_long) // 2
+            top = 0
+            right = left + target_long
+            bottom = target_short
+            resized_image = resized_image.crop((left, top, right, bottom))
+    
+    return resized_image
+
+
+def _process_image_bytes(image_bytes: bytes) -> bytes:
+    """处理图片字节数据：压缩裁切后返回JPEG格式字节
+    
+    Args:
+        image_bytes: 原始图片字节数据
+        
+    Returns:
+        处理后的JPEG格式字节数据
+    """
+    try:
+        # 从字节数据创建PIL Image
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # 如果有透明通道，转换为RGB
+        if image.mode in ('RGBA', 'LA', 'P'):
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+            image = background
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # 调整尺寸和裁切
+        processed_image = _resize_image_if_needed(image)
+        
+        # 转换回字节
+        output_buffer = io.BytesIO()
+        processed_image.save(output_buffer, format='JPEG', quality=95)
+        output_buffer.seek(0)
+        
+        debug_logger.log_info(f"[IMAGE] 图片处理完成: {image.size} -> {processed_image.size}")
+        return output_buffer.getvalue()
+    except Exception as e:
+        debug_logger.log_warning(f"[IMAGE] 图片处理失败，使用原始数据: {str(e)}")
+        return image_bytes
 
 
 @router.get("/v1/models")
@@ -111,7 +225,7 @@ async def create_chat_completion(
                 if item.get("type") == "text":
                     prompt = item.get("text", "")
                 elif item.get("type") == "image_url":
-                    # Extract base64 image
+                    # Extract image from URL or base64
                     image_url = item.get("image_url", {}).get("url", "")
                     if image_url.startswith("data:image"):
                         # Parse base64
@@ -119,7 +233,19 @@ async def create_chat_completion(
                         if match:
                             image_base64 = match.group(1)
                             image_bytes = base64.b64decode(image_base64)
-                            images.append(image_bytes)
+                            # 压缩裁切图片
+                            processed_bytes = _process_image_bytes(image_bytes)
+                            images.append(processed_bytes)
+                    elif image_url.startswith("http"):
+                        # Download image from URL
+                        downloaded_bytes = await retrieve_image_data(image_url)
+                        if downloaded_bytes:
+                            # 压缩裁切图片
+                            processed_bytes = _process_image_bytes(downloaded_bytes)
+                            images.append(processed_bytes)
+                            debug_logger.log_info(f"[IMAGE] 从URL下载并处理图片: {image_url}")
+                        else:
+                            debug_logger.log_warning(f"[IMAGE] 无法下载图片: {image_url}")
 
         # Fallback to deprecated image parameter
         if request.image and not images:
