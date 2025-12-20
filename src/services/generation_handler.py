@@ -51,97 +51,65 @@ MODEL_CONFIG = {
     # ========== 文生视频 (T2V - Text to Video) ==========
     # 不支持上传图片，只使用文本提示词生成
 
-    # veo_3_1_t2v_fast_portrait (竖屏)
-    # 上游模型名: veo_3_1_t2v_fast_portrait
-    "veo_3_1_t2v_fast_portrait": {
+    # Fast 模型 - 文生视频
+    "veo_3_1_t2v_fast_ultra": {  # 横屏
         "type": "video",
         "video_type": "t2v",
-        "model_key": "veo_3_1_t2v_fast_portrait",
+        "model_key": "veo_3_1_t2v_fast_ultra",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        "supports_images": False
+    },
+    "veo_3_1_t2v_fast_portrait_ultra": {  # 竖屏
+        "type": "video",
+        "video_type": "t2v",
+        "model_key": "veo_3_1_t2v_fast_portrait_ultra",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": False
     },
-    # veo_3_1_t2v_fast_landscape (横屏)
-    # 上游模型名: veo_3_1_t2v_fast
-    "veo_3_1_t2v_fast_landscape": {
+
+    # Quality 模型 - 文生视频 (只有横屏)
+    "veo_3_1_t2v": {
         "type": "video",
         "video_type": "t2v",
-        "model_key": "veo_3_1_t2v_fast_landscape",
+        "model_key": "veo_3_1_t2v",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": False
     },
 
+    # ========== 首帧生成 (I2V - Image to Video with Start Image) ==========
+    # 支持1张图片作为首帧
 
-    # ========== 首尾帧模型 (I2V - Image to Video) ==========
-    # 支持1-2张图片：1张作为首帧，2张作为首尾帧
-
-    # veo_3_1_i2v_s_fast_fl (需要新增横竖屏)
-    "veo_3_1_i2v_s_fast_fl_portrait": {
+    # Fast 模型 - 首帧生成
+    "veo_3_1_i2v_s_fast_ultra": {  # 横屏
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fast_fl_portrait",
-        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
-        "supports_images": True,
-        "min_images": 1,
-        "max_images": 2
-    },
-    "veo_3_1_i2v_s_fast_fl_landscape": {
-        "type": "video",
-        "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fast_fl_landscape",
+        "model_key": "veo_3_1_i2v_s_fast_ultra",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
         "min_images": 1,
-        "max_images": 2
+        "max_images": 1
     },
-
-    
-
-    # ========== 多图生成 (R2V - Reference Images to Video) ==========
-    # 支持多张图片,不限制数量
-
-    # veo_3_0_r2v_fast (需要新增横竖屏)
-    "veo_3_0_r2v_fast_portrait": {
+    "veo_3_1_i2v_s_fast_portrait_ultra": {  # 竖屏
         "type": "video",
-        "video_type": "r2v",
-        "model_key": "veo_3_0_r2v_fast_portrait",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s_fast_portrait_ultra",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": True,
-        "min_images": 0,
-        "max_images": None  # 不限制
+        "min_images": 1,
+        "max_images": 1
     },
-    "veo_3_0_r2v_fast_landscape": {
+
+    # Quality 模型 - 首帧生成
+    "veo_3_1_i2v_s": {  # 横屏
         "type": "video",
-        "video_type": "r2v",
-        "model_key": "veo_3_0_r2v_fast_landscape",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
-        "min_images": 0,
-        "max_images": None  # 不限制
+        "min_images": 1,
+        "max_images": 1
     },
-
-    # ========== Quality 模型 (veo-3.1-quality) ==========
-    # 高质量模型，速度较慢但效果更好
-
-    # 文生视频 (T2V) - Quality
-    # 上游模型名: veo_3_1_t2v
-    "veo_3_1_t2v_portrait": {
-        "type": "video",
-        "video_type": "t2v",
-        "model_key": "veo_3_1_t2v_portrait",
-        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
-        "supports_images": False
-    },
-    "veo_3_1_t2v_landscape": {
-        "type": "video",
-        "video_type": "t2v",
-        "model_key": "veo_3_1_t2v_landscape",
-        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
-        "supports_images": False
-    },
-
-    # 首帧生成 (I2V) - Quality
-    # 上游模型名: veo_3_1_i2v_s / veo_3_1_i2v_s_portrait
-    "veo_3_1_i2v_s_portrait": {
+    "veo_3_1_i2v_s_portrait": {  # 竖屏
         "type": "video",
         "video_type": "i2v",
         "model_key": "veo_3_1_i2v_s_portrait",
@@ -150,35 +118,62 @@ MODEL_CONFIG = {
         "min_images": 1,
         "max_images": 1
     },
-    "veo_3_1_i2v_s_landscape": {
+
+    # ========== 首尾帧生成 (I2V FL - Image to Video with Start+End Frame) ==========
+    # 支持2张图片：1张作为首帧，1张作为尾帧
+
+    # Fast 模型 - 首尾帧生成
+    "veo_3_1_i2v_s_fast_ultra_fl": {  # 横屏
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_landscape",
+        "model_key": "veo_3_1_i2v_s_fast_ultra_fl",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
-        "min_images": 1,
-        "max_images": 1
+        "min_images": 2,
+        "max_images": 2
     },
-
-    # 首尾帧生成 (I2V FL) - Quality
-    # 上游模型名: veo_3_1_i2v_s_fl / veo_3_1_i2v_s_portrait_fl
-    "veo_3_1_i2v_s_fl_portrait": {
+    "veo_3_1_i2v_s_fast_portrait_ultra_fl": {  # 竖屏
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fl_portrait",
+        "model_key": "veo_3_1_i2v_s_fast_portrait_ultra_fl",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": True,
         "min_images": 2,
         "max_images": 2
     },
-    "veo_3_1_i2v_s_fl_landscape": {
+
+    # Quality 模型 - 首尾帧生成
+    "veo_3_1_i2v_s_fl": {  # 横屏
         "type": "video",
         "video_type": "i2v",
-        "model_key": "veo_3_1_i2v_s_fl_landscape",
+        "model_key": "veo_3_1_i2v_s_fl",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
         "supports_images": True,
         "min_images": 2,
         "max_images": 2
+    },
+    "veo_3_1_i2v_s_portrait_fl": {  # 竖屏
+        "type": "video",
+        "video_type": "i2v",
+        "model_key": "veo_3_1_i2v_s_portrait_fl",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
+        "supports_images": True,
+        "min_images": 2,
+        "max_images": 2
+    },
+
+    # ========== 多参考图生成 (R2V - Reference Images to Video) ==========
+    # 支持多张参考图片，只支持横屏，Quality 模型不支持
+
+    # Fast 模型 - 多参考图生成 (只支持横屏)
+    "veo_3_0_r2v_fast_ultra": {
+        "type": "video",
+        "video_type": "r2v",
+        "model_key": "veo_3_0_r2v_fast_ultra",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        "supports_images": True,
+        "min_images": 1,
+        "max_images": None  # 不限制
     }
 }
 
