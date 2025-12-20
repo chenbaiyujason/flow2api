@@ -190,13 +190,15 @@ class DebugLogger:
             # Body
             self.logger.info("\n📦 Response Body:")
             if isinstance(body, (dict, list)):
-                body_str = json.dumps(body, indent=2, ensure_ascii=False)
+                sanitized_body = self._sanitize_body(body)
+                body_str = json.dumps(sanitized_body, indent=2, ensure_ascii=False)
                 self.logger.info(body_str)
             elif isinstance(body, str):
                 # Try to parse as JSON
                 try:
                     parsed = json.loads(body)
-                    body_str = json.dumps(parsed, indent=2, ensure_ascii=False)
+                    sanitized_body = self._sanitize_body(parsed)
+                    body_str = json.dumps(sanitized_body, indent=2, ensure_ascii=False)
                     self.logger.info(body_str)
                 except:
                     # Not JSON, log as text (limit length)

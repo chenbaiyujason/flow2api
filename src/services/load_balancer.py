@@ -7,7 +7,7 @@ from ..core.logger import debug_logger
 
 
 class LoadBalancer:
-    """Token load balancer with random selection"""
+    """Token load balancer with 'fill first' strategy for better batching"""
 
     def __init__(self, token_manager, concurrency_manager: Optional[ConcurrencyManager] = None):
         self.token_manager = token_manager
@@ -20,7 +20,8 @@ class LoadBalancer:
         model: Optional[str] = None
     ) -> Optional[Token]:
         """
-        Select a token using random load balancing
+        Select a token using 'fill first' strategy - prioritize tokens with most remaining concurrency.
+        This helps batch requests to the same token for better API call efficiency.
 
         Args:
             for_image_generation: If True, only select tokens with image_enabled=True
@@ -89,7 +90,37 @@ class LoadBalancer:
             debug_logger.log_info(f"[LOAD_BALANCER] ❌ 没有可用的Token (图片生成={for_image_generation}, 视频生成={for_video_generation})")
             return None
 
-        # Random selection
+        # 'Fill First' strategy: select token with most remaining concurrency
+        # This helps batch requests to the same token
+        if self.concurrency_manager:
+            best_token = None
+            max_remaining = -1
+            
+            for token in available_tokens:
+                if for_image_generation:
+                    remaining = await self.concurrency_manager.get_image_remaining(token.id)
+                elif for_video_generation:
+                    remaining = await self.concurrency_manager.get_video_remaining(token.id)
+                else:
+                    remaining = None
+                
+                # None means no limit, treat as infinite
+                if remaining is None:
+                    remaining = float('inf')
+                
+                if remaining > max_remaining:
+                    max_remaining = remaining
+                    best_token = token
+            
+            if best_token:
+                debug_logger.log_info(
+                    f"[LOAD_BALANCER] ✅ 已选择Token {best_token.id} ({best_token.email}) - "
+                    f"余额: {best_token.credits}, 剩余并发: {max_remaining if max_remaining != float('inf') else '无限制'}"
+                )
+                return best_token
+        
+        # Fallback to random if no concurrency manager
         selected = random.choice(available_tokens)
         debug_logger.log_info(f"[LOAD_BALANCER] ✅ 已选择Token {selected.id} ({selected.email}) - 余额: {selected.credits}")
         return selected
+
