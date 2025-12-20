@@ -10,11 +10,12 @@ class DebugLogger:
     """Debug logger for API requests and responses"""
 
     def __init__(self):
-        self.log_file = Path("logs.txt")
         self._setup_logger()
 
     def _setup_logger(self):
-        """Setup file logger"""
+        """Setup console logger for Railway terminal output"""
+        import sys
+        
         # Create logger
         self.logger = logging.getLogger("debug_logger")
         self.logger.setLevel(logging.DEBUG)
@@ -22,23 +23,19 @@ class DebugLogger:
         # Remove existing handlers
         self.logger.handlers.clear()
 
-        # Create file handler
-        file_handler = logging.FileHandler(
-            self.log_file,
-            mode='a',
-            encoding='utf-8'
-        )
-        file_handler.setLevel(logging.DEBUG)
+        # Create console handler (stdout) for Railway terminal
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.DEBUG)
 
         # Create formatter
         formatter = logging.Formatter(
             '%(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
-        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
 
         # Add handler
-        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
 
         # Prevent propagation to root logger
         self.logger.propagate = False
