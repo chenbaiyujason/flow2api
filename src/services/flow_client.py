@@ -725,7 +725,7 @@ class FlowClient:
                         "task": {
                             "websiteURL": website_url,
                             "websiteKey": website_key,
-                            "type": "RecaptchaV3TaskProxylessM1",
+                            "type": "RecaptchaV3TaskProxylessM1S7",
                             "pageAction": page_action
                         }
                     }
