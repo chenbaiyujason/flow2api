@@ -35,8 +35,8 @@ class Token(BaseModel):
     video_enabled: bool = True
 
     # 并发限制
-    image_concurrency: int = -1  # -1表示无限制
-    video_concurrency: int = -1  # -1表示无限制
+    image_concurrency: int = 4  # -1表示无限制
+    video_concurrency: int = 4  # -1表示无限制
 
     # 429禁用相关
     ban_reason: Optional[str] = None  # 禁用原因: "429_rate_limit" 或 None

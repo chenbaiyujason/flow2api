@@ -153,7 +153,7 @@ generation_handler = GenerationHandler(
 
 # Set dependencies
 routes.set_generation_handler(generation_handler)
-admin.set_dependencies(token_manager, proxy_manager, db)
+admin.set_dependencies(token_manager, proxy_manager, db, concurrency_manager)
 
 # Create FastAPI app
 app = FastAPI(

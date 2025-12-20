@@ -8,6 +8,7 @@ from ..core.auth import AuthManager
 from ..core.database import Database
 from ..services.token_manager import TokenManager
 from ..services.proxy_manager import ProxyManager
+from ..services.concurrency_manager import ConcurrencyManager
 
 router = APIRouter()
 
@@ -15,17 +16,19 @@ router = APIRouter()
 token_manager: TokenManager = None
 proxy_manager: ProxyManager = None
 db: Database = None
+concurrency_manager: ConcurrencyManager = None
 
 # Store active admin session tokens (in production, use Redis or database)
 active_admin_tokens = set()
 
 
-def set_dependencies(tm: TokenManager, pm: ProxyManager, database: Database):
+def set_dependencies(tm: TokenManager, pm: ProxyManager, database: Database, cm: ConcurrencyManager = None):
     """Set service instances"""
-    global token_manager, proxy_manager, db
+    global token_manager, proxy_manager, db, concurrency_manager
     token_manager = tm
     proxy_manager = pm
     db = database
+    concurrency_manager = cm
 
 
 # ========== Request Models ==========
@@ -293,9 +296,18 @@ async def update_token(
             video_concurrency=request.video_concurrency
         )
 
+        # 🔥 同步更新并发管理器的内存状态
+        if concurrency_manager and (request.image_concurrency is not None or request.video_concurrency is not None):
+            await concurrency_manager.reset_token(
+                token_id,
+                image_concurrency=request.image_concurrency if request.image_concurrency is not None else -1,
+                video_concurrency=request.video_concurrency if request.video_concurrency is not None else -1
+            )
+
         return {"success": True, "message": "Token更新成功"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @router.delete("/api/tokens/{token_id}")
