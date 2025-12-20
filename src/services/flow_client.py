@@ -571,7 +571,7 @@ class FlowClient:
         Returns:
             同 generate_video_text
         """
-        url = f"{self.api_base_url}/video:batchAsyncGenerateVideoStartAndEndImage"
+        url = f"{self.api_base_url}/video:batchAsyncGenerateVideoStartImage"
 
         # 获取 reCAPTCHA token
         recaptcha_token = await self._get_recaptcha_token(project_id) or ""
@@ -596,7 +596,6 @@ class FlowClient:
                 "startImage": {
                     "mediaId": start_media_id
                 },
-                # 注意: 没有endImage字段,只用首帧
                 "metadata": {
                     "sceneId": scene_id
                 }
