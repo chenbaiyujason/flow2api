@@ -21,13 +21,13 @@ class ConcurrencyManager:
             tokens: List of Token objects with image_concurrency and video_concurrency fields
         """
         async with self._lock:
+            # 写死并发为 4
+            DEFAULT_CONCURRENCY = 4
             for token in tokens:
-                if token.image_concurrency and token.image_concurrency > 0:
-                    self._image_concurrency[token.id] = token.image_concurrency
-                if token.video_concurrency and token.video_concurrency > 0:
-                    self._video_concurrency[token.id] = token.video_concurrency
+                self._image_concurrency[token.id] = DEFAULT_CONCURRENCY
+                self._video_concurrency[token.id] = DEFAULT_CONCURRENCY
 
-            debug_logger.log_info(f"Concurrency manager initialized with {len(tokens)} tokens")
+            debug_logger.log_info(f"Concurrency manager initialized with {len(tokens)} tokens (concurrency: {DEFAULT_CONCURRENCY})")
 
     async def can_use_image(self, token_id: int) -> bool:
         """
