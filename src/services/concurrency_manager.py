@@ -173,18 +173,27 @@ class ConcurrencyManager:
 
         Args:
             token_id: Token ID
-            image_concurrency: New image concurrency limit (-1 for no limit)
-            video_concurrency: New video concurrency limit (-1 for no limit)
+            image_concurrency: New image concurrency limit (-1 uses default of 4)
+            video_concurrency: New video concurrency limit (-1 uses default of 4)
         """
+        DEFAULT_CONCURRENCY = 4
+        
         async with self._lock:
-            if image_concurrency > 0:
+            # Use default if -1, otherwise use provided value (or 0 to remove)
+            if image_concurrency == -1:
+                self._image_concurrency[token_id] = DEFAULT_CONCURRENCY
+            elif image_concurrency > 0:
                 self._image_concurrency[token_id] = image_concurrency
             elif token_id in self._image_concurrency:
                 del self._image_concurrency[token_id]
 
-            if video_concurrency > 0:
+            if video_concurrency == -1:
+                self._video_concurrency[token_id] = DEFAULT_CONCURRENCY
+            elif video_concurrency > 0:
                 self._video_concurrency[token_id] = video_concurrency
             elif token_id in self._video_concurrency:
                 del self._video_concurrency[token_id]
 
-            debug_logger.log_info(f"Token {token_id} concurrency reset (image: {image_concurrency}, video: {video_concurrency})")
+            actual_image = self._image_concurrency.get(token_id, "无限制")
+            actual_video = self._video_concurrency.get(token_id, "无限制")
+            debug_logger.log_info(f"Token {token_id} concurrency reset (image: {actual_image}, video: {actual_video})")

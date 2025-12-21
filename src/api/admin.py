@@ -242,6 +242,14 @@ async def add_token(
             video_concurrency=request.video_concurrency
         )
 
+        # 🔥 同步更新并发管理器的内存状态 (确保动态添加的Token有并发限制)
+        if concurrency_manager:
+            await concurrency_manager.reset_token(
+                new_token.id,
+                image_concurrency=request.image_concurrency,
+                video_concurrency=request.video_concurrency
+            )
+
         return {
             "success": True,
             "message": "Token添加成功",
@@ -466,6 +474,13 @@ async def import_tokens(
                         image_concurrency=item.image_concurrency,
                         video_concurrency=item.video_concurrency
                     )
+                    # 🔥 同步更新并发管理器的内存状态
+                    if concurrency_manager:
+                        await concurrency_manager.reset_token(
+                            existing.id,
+                            image_concurrency=item.image_concurrency,
+                            video_concurrency=item.video_concurrency
+                        )
                     # 如果过期则禁用
                     if is_expired:
                         await token_manager.disable_token(existing.id)
@@ -479,6 +494,13 @@ async def import_tokens(
                         image_concurrency=item.image_concurrency,
                         video_concurrency=item.video_concurrency
                     )
+                    # 🔥 同步更新并发管理器的内存状态
+                    if concurrency_manager:
+                        await concurrency_manager.reset_token(
+                            new_token.id,
+                            image_concurrency=item.image_concurrency,
+                            video_concurrency=item.video_concurrency
+                        )
                     # 如果过期则禁用
                     if is_expired:
                         await token_manager.disable_token(new_token.id)

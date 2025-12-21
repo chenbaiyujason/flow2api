@@ -103,10 +103,12 @@ class LoadBalancer:
                 elif for_video_generation:
                     remaining = await self.concurrency_manager.get_video_remaining(token.id)
                 else:
-                    remaining = None
+                    # 默认使用图片并发
+                    remaining = await self.concurrency_manager.get_image_remaining(token.id)
                 
                 # None means no limit, treat as infinite
                 if remaining is None:
+                    debug_logger.log_info(f"[LOAD_BALANCER] Token {token.id} 没有获取到并发限制，视为无限")
                     remaining = float('inf')
                 
                 # Select if more remaining, or same remaining but smaller ID (stable selection)
