@@ -194,6 +194,121 @@ class GenerationHandler:
             proxy_manager=proxy_manager
         )
 
+    async def _download_and_process_image(self, url: str, model: str = "") -> Optional[bytes]:
+        """下载并处理单张图片
+        
+        Args:
+            url: 图片 URL (http/https 或 data:image base64)
+            model: 模型名称，用于确定压缩策略
+            
+        Returns:
+            处理后的图片 bytes，失败返回 None
+        """
+        import re
+        import aiohttp
+        from io import BytesIO
+        from PIL import Image
+        
+        try:
+            image_bytes = None
+            
+            if url.startswith("data:image"):
+                # Base64 格式
+                match = re.search(r"base64,(.+)", url)
+                if match:
+                    image_base64 = match.group(1)
+                    image_bytes = base64.b64decode(image_base64)
+            elif url.startswith("http"):
+                # HTTP URL 下载
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                        if resp.status == 200:
+                            image_bytes = await resp.read()
+            
+            if not image_bytes:
+                debug_logger.log_warning(f"[IMAGE] 无法获取图片: {url[:50]}...")
+                return None
+            
+            # 压缩处理
+            processed = self._compress_image(image_bytes, model)
+            return processed
+            
+        except Exception as e:
+            debug_logger.log_error(f"[IMAGE] 处理图片失败: {str(e)}")
+            return None
+    
+    async def _download_and_process_images(self, urls: List[str], model: str = "") -> List[bytes]:
+        """并发下载并处理多张图片
+        
+        Args:
+            urls: 图片 URL 列表
+            model: 模型名称
+            
+        Returns:
+            处理后的图片 bytes 列表 (保持顺序，失败的会被跳过)
+        """
+        if not urls:
+            return []
+        
+        # 并发下载处理所有图片
+        tasks = [self._download_and_process_image(url, model) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 过滤失败的结果
+        processed = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                debug_logger.log_error(f"[IMAGE] 图片 {i+1} 处理异常: {str(result)}")
+            elif result is not None:
+                processed.append(result)
+            else:
+                debug_logger.log_warning(f"[IMAGE] 图片 {i+1} 处理失败，已跳过")
+        
+        debug_logger.log_info(f"[IMAGE] 成功处理 {len(processed)}/{len(urls)} 张图片")
+        return processed
+    
+    def _compress_image(self, image_bytes: bytes, model: str = "") -> bytes:
+        """压缩图片
+        
+        Args:
+            image_bytes: 原始图片 bytes
+            model: 模型名称，用于确定压缩策略
+            
+        Returns:
+            压缩后的图片 bytes
+        """
+        from io import BytesIO
+        from PIL import Image
+        
+        try:
+            img = Image.open(BytesIO(image_bytes))
+            
+            # 转换为 RGB (处理 RGBA 等格式)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            
+            # 获取原始尺寸
+            orig_width, orig_height = img.size
+            
+            # 最大边长 1920
+            max_side = 1920
+            if max(orig_width, orig_height) > max_side:
+                if orig_width > orig_height:
+                    new_width = max_side
+                    new_height = int(orig_height * max_side / orig_width)
+                else:
+                    new_height = max_side
+                    new_width = int(orig_width * max_side / orig_height)
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # 保存为 JPEG
+            output = BytesIO()
+            img.save(output, format="JPEG", quality=85, optimize=True)
+            return output.getvalue()
+            
+        except Exception as e:
+            debug_logger.log_error(f"[IMAGE] 压缩失败: {str(e)}")
+            return image_bytes  # 返回原始数据
 
     async def check_token_availability(self, is_image: bool, is_video: bool) -> bool:
         """检查Token可用性
@@ -211,11 +326,12 @@ class GenerationHandler:
         )
         return token_obj is not None
 
+
     async def handle_generation(
         self,
         model: str,
         prompt: str,
-        images: Optional[List[bytes]] = None,
+        image_urls: Optional[List[str]] = None,
         stream: bool = False
     ) -> AsyncGenerator:
         """统一生成入口
@@ -223,9 +339,10 @@ class GenerationHandler:
         Args:
             model: 模型名称
             prompt: 提示词
-            images: 图片列表 (bytes格式)
+            image_urls: 图片URL列表 (http/https URL 或 data:image base64)
             stream: 是否流式输出
         """
+
         start_time = time.time()
         token = None
 
@@ -312,13 +429,13 @@ class GenerationHandler:
             if generation_type == "image":
                 debug_logger.log_info(f"[GENERATION] 开始图片生成流程...")
                 async for chunk in self._handle_image_generation(
-                    token, project_id, model_config, prompt, images, stream
+                    token, project_id, model_config, prompt, image_urls, stream
                 ):
                     yield chunk
             else:  # video
                 debug_logger.log_info(f"[GENERATION] 开始视频生成流程...")
                 async for chunk in self._handle_video_generation(
-                    token, project_id, model_config, prompt, images, stream
+                    token, project_id, model_config, prompt, image_urls, stream
                 ):
                     yield chunk
 
@@ -336,7 +453,7 @@ class GenerationHandler:
             await self._log_request(
                 token.id,
                 f"generate_{generation_type}",
-                {"model": model, "prompt": prompt[:100], "has_images": images is not None and len(images) > 0},
+                {"model": model, "prompt": prompt[:100], "has_images": image_urls is not None and len(image_urls) > 0},
                 {"status": "success"},
                 200,
                 duration
@@ -361,7 +478,7 @@ class GenerationHandler:
             await self._log_request(
                 token.id if token else None,
                 f"generate_{generation_type if model_config else 'unknown'}",
-                {"model": model, "prompt": prompt[:100], "has_images": images is not None and len(images) > 0},
+                {"model": model, "prompt": prompt[:100], "has_images": image_urls is not None and len(image_urls) > 0},
                 {"error": error_msg},
                 500,
                 duration
@@ -380,7 +497,7 @@ class GenerationHandler:
         project_id: str,
         model_config: dict,
         prompt: str,
-        images: Optional[List[bytes]],
+        image_urls: Optional[List[str]],
         stream: bool
     ) -> AsyncGenerator:
         """处理图片生成 (同步返回)"""
@@ -392,40 +509,22 @@ class GenerationHandler:
                 return
 
         try:
-            # 上传图片 (如果有)
-            image_inputs = []
-            if images and len(images) > 0:
-                if stream:
-                    yield self._create_stream_chunk(f"上传 {len(images)} 张参考图片...\n")
-
-                # 支持多图输入
-                for idx, image_bytes in enumerate(images):
-                    media_id = await self.flow_client.upload_image(
-                        token.at,
-                        image_bytes,
-                        model_config["aspect_ratio"]
-                    )
-                    image_inputs.append({
-                        "name": media_id,
-                        "imageInputType": "IMAGE_INPUT_TYPE_REFERENCE"
-                    })
-                    if stream:
-                        yield self._create_stream_chunk(f"已上传第 {idx + 1}/{len(images)} 张图片\n")
-
-            # 调用生成API
-            if stream:
-                yield self._create_stream_chunk("正在生成图片...\n")
-
             import random
             
-            # 构建请求数据
+            if stream and image_urls:
+                yield self._create_stream_chunk(f"将处理 {len(image_urls)} 张参考图片...\\n")
+            
+            # 构建请求数据 (图片URL在batch_manager中处理)
             request_data = {
                 "seed": random.randint(1, 99999),
                 "imageModelName": model_config["model_name"],
                 "imageAspectRatio": model_config["aspect_ratio"],
                 "prompt": prompt,
-                "imageInputs": image_inputs
+                "imageInputs": []  # 将由batch_manager填充
             }
+            
+            if stream:
+                yield self._create_stream_chunk("正在生成图片...\\n")
             
             # 使用批量管理器或直接调用
             if self.batch_manager:
@@ -435,6 +534,8 @@ class GenerationHandler:
                     at_token=token.at,
                     project_id=project_id,
                     request_data=request_data,
+                    image_urls=image_urls,  # 传递URL列表
+                    model=model_config.get("model_name", ""),
                     user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
                 )
                 
@@ -445,8 +546,25 @@ class GenerationHandler:
                 image_url = media_result["image"]["generatedImage"]["fifeUrl"]
             else:
                 # 回退到直接调用 (兼容无批量管理器的情况)
+                # 需要先处理图片URL
+                image_inputs = []
+                if image_urls:
+                    for url in image_urls:
+                        image_bytes = await self._download_and_process_image(url, model_config.get("model_name"))
+                        if image_bytes:
+                            media_id = await self.flow_client.upload_image(
+                                token.at,
+                                image_bytes,
+                                model_config["aspect_ratio"]
+                            )
+                            image_inputs.append({
+                                "name": media_id,
+                                "imageInputType": "IMAGE_INPUT_TYPE_REFERENCE"
+                            })
+                
                 result = await self.flow_client.generate_image(
                     at=token.at,
+
                     project_id=project_id,
                     prompt=prompt,
                     model_name=model_config["model_name"],
@@ -506,7 +624,7 @@ class GenerationHandler:
         project_id: str,
         model_config: dict,
         prompt: str,
-        images: Optional[List[bytes]],
+        image_urls: Optional[List[str]],
         stream: bool
     ) -> AsyncGenerator:
         """处理视频生成 (异步轮询)"""
@@ -525,7 +643,14 @@ class GenerationHandler:
             max_images = model_config.get("max_images", 0)
 
             # 图片数量
-            image_count = len(images) if images else 0
+            image_count = len(image_urls) if image_urls else 0
+            
+            # 下载并处理图片 (并发处理)
+            images: List[bytes] = []
+            if image_urls:
+                if stream:
+                    yield self._create_stream_chunk(f"正在处理 {len(image_urls)} 张图片...\\n")
+                images = await self._download_and_process_images(image_urls, model_config.get("model_key", ""))
 
             # ========== 验证和处理图片 ==========
 
@@ -533,9 +658,10 @@ class GenerationHandler:
             if video_type == "t2v":
                 if image_count > 0:
                     if stream:
-                        yield self._create_stream_chunk("⚠️ 文生视频模型不支持上传图片,将忽略图片仅使用文本提示词生成\n")
+                        yield self._create_stream_chunk("⚠️ 文生视频模型不支持上传图片,将忽略图片仅使用文本提示词生成\\n")
                     debug_logger.log_warning(f"[T2V] 模型 {model_config['model_key']} 不支持图片,已忽略 {image_count} 张图片")
-                images = None  # 清空图片
+                images = []  # 清空图片
+
                 image_count = 0
 
             # I2V: 首尾帧模型 - 需要1-2张图片

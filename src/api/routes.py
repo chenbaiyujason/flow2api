@@ -249,7 +249,7 @@ async def create_chat_completion(
 
         # Handle both string and array format (OpenAI multimodal)
         prompt = ""
-        images: List[bytes] = []
+        image_urls: List[str] = []  # 只收集 URL，不在这里处理
 
         if isinstance(content, str):
             # Simple text format
@@ -260,41 +260,23 @@ async def create_chat_completion(
                 if item.get("type") == "text":
                     prompt = item.get("text", "")
                 elif item.get("type") == "image_url":
-                    # Extract image from URL or base64
+                    # 只提取 URL，不在这里下载/处理
                     image_url = item.get("image_url", {}).get("url", "")
-                    if image_url.startswith("data:image"):
-                        # Parse base64
-                        match = re.search(r"base64,(.+)", image_url)
-                        if match:
-                            image_base64 = match.group(1)
-                            image_bytes = base64.b64decode(image_base64)
-                            # 压缩裁切图片
-                            processed_bytes = _process_image_bytes(image_bytes, model=request.model)
-                            images.append(processed_bytes)
-                    elif image_url.startswith("http"):
-                        # Download image from URL
-                        downloaded_bytes = await retrieve_image_data(image_url)
-                        if downloaded_bytes:
-                            # 压缩裁切图片
-                            processed_bytes = _process_image_bytes(downloaded_bytes, model=request.model)
-                            images.append(processed_bytes)
-                            debug_logger.log_info(f"[IMAGE] 从URL下载并处理图片: {image_url}")
-                        else:
-                            debug_logger.log_warning(f"[IMAGE] 无法下载图片: {image_url}")
+                    if image_url:
+                        image_urls.append(image_url)
+                        debug_logger.log_info(f"[IMAGE] 收集图片URL: {image_url[:50]}...")
 
-        # Fallback to deprecated image parameter
-        if request.image and not images:
+
+        # Fallback to deprecated image parameter (base64)
+        if request.image and not image_urls:
             if request.image.startswith("data:image"):
-                match = re.search(r"base64,(.+)", request.image)
-                if match:
-                    image_base64 = match.group(1)
-                    image_bytes = base64.b64decode(image_base64)
-                    images.append(image_bytes)
+                # base64 也作为 URL 传递，后续在 batch 中处理
+                image_urls.append(request.image)
 
         # 自动参考图：仅对图片模型生效
         model_config = MODEL_CONFIG.get(request.model)
 
-        if model_config and model_config["type"] == "image" and not images and len(request.messages) > 1:
+        if model_config and model_config["type"] == "image" and not image_urls and len(request.messages) > 1:
             debug_logger.log_info(f"[CONTEXT] 开始查找历史参考图，消息数量: {len(request.messages)}")
 
             # 如果当前请求没有上传图片，则尝试从历史记录中寻找最近的一张生成图
@@ -304,19 +286,10 @@ async def create_chat_completion(
                     matches = re.findall(r"!\[.*?\]\((.*?)\)", msg.content)
                     if matches:
                         last_image_url = matches[-1]
-
                         if last_image_url.startswith("http"):
-                            try:
-                                downloaded_bytes = await retrieve_image_data(last_image_url)
-                                if downloaded_bytes and len(downloaded_bytes) > 0:
-                                    images.append(downloaded_bytes)
-                                    debug_logger.log_info(f"[CONTEXT] ✅ 自动使用历史参考图: {last_image_url}")
-                                    break
-                                else:
-                                    debug_logger.log_warning(f"[CONTEXT] 图片下载失败或为空，尝试下一个: {last_image_url}")
-                            except Exception as e:
-                                debug_logger.log_error(f"[CONTEXT] 处理参考图时出错: {str(e)}")
-                                # 继续尝试下一个图片
+                            image_urls.append(last_image_url)
+                            debug_logger.log_info(f"[CONTEXT] ✅ 自动使用历史参考图: {last_image_url}")
+                            break
 
         if not prompt:
             raise HTTPException(status_code=400, detail="Prompt cannot be empty")
@@ -328,7 +301,7 @@ async def create_chat_completion(
                 async for chunk in generation_handler.handle_generation(
                     model=request.model,
                     prompt=prompt,
-                    images=images if images else None,
+                    image_urls=image_urls if image_urls else None,
                     stream=True
                 ):
                     yield chunk
@@ -351,10 +324,11 @@ async def create_chat_completion(
             async for chunk in generation_handler.handle_generation(
                 model=request.model,
                 prompt=prompt,
-                images=images if images else None,
+                image_urls=image_urls if image_urls else None,
                 stream=False
             ):
                 result = chunk
+
 
             if result:
                 # Parse the result JSON string

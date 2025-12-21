@@ -16,7 +16,10 @@ class PendingRequest:
     scene_id: str                      # 用于匹配结果的 sceneId
     request_data: Dict                 # 请求数据 (不含clientContext)
     future: Optional[asyncio.Future] = None  # 在创建时设置
+    image_urls: List[str] = field(default_factory=list)  # 图片URL列表
+    model: str = ""                    # 模型名称
     created_at: float = field(default_factory=time.time)
+
 
 
 
@@ -164,6 +167,8 @@ class BatchRequestManager:
         at_token: str,
         project_id: str,
         request_data: Dict,
+        image_urls: Optional[List[str]] = None,
+        model: str = "",
         user_paygate_tier: str = "PAYGATE_TIER_ONE"
     ) -> asyncio.Future:
         """
@@ -174,6 +179,8 @@ class BatchRequestManager:
             at_token: Access Token
             project_id: 项目ID
             request_data: 单个请求数据
+            image_urls: 图片URL列表 (将在batch中统一处理)
+            model: 模型名称
             user_paygate_tier: 用户等级
             
         Returns:
@@ -190,8 +197,11 @@ class BatchRequestManager:
             request_id=request_index,
             scene_id=request_index,  # 图片用索引匹配
             request_data=request_data,
+            image_urls=image_urls or [],  # 存储URL列表
+            model=model,
             future=loop.create_future()
         )
+
         
         async with self._lock:
             if batch_key not in self._pending_batches:
@@ -320,7 +330,7 @@ class BatchRequestManager:
                     req.future.set_exception(e)
     
     async def _send_image_batch(self, batch: PendingBatch):
-        """发送图片批量请求"""
+        """发送图片批量请求 - 带URL去重和统一上传"""
         try:
             # 获取共享的 recaptcha_token
             recaptcha_token = await self.flow_client._get_recaptcha_token(batch.project_id) or ""
@@ -331,13 +341,123 @@ class BatchRequestManager:
                 f"请求数: {len(batch.requests)}"
             )
             
-            # 构建批量请求
+            # ========== 1. 收集并去重所有图片URL ==========
+            all_urls = set()
+            for req in batch.requests:
+                if req.image_urls:
+                    all_urls.update(req.image_urls)
+            
+            unique_urls = list(all_urls)
+            debug_logger.log_info(f"[BATCH] 共收集到 {len(unique_urls)} 个唯一图片URL")
+            
+            # ========== 2. 并发下载和处理图片 ==========
+            url_to_bytes: Dict[str, bytes] = {}
+            if unique_urls:
+                async def download_one(url: str) -> Tuple[str, Optional[bytes]]:
+                    """下载并处理单张图片"""
+                    try:
+                        import re
+                        import aiohttp
+                        from io import BytesIO
+                        from PIL import Image
+                        import base64
+                        
+                        image_bytes = None
+                        
+                        if url.startswith("data:image"):
+                            # Base64 格式
+                            match = re.search(r"base64,(.+)", url)
+                            if match:
+                                image_bytes = base64.b64decode(match.group(1))
+                        elif url.startswith("http"):
+                            # HTTP URL
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                                    if resp.status == 200:
+                                        image_bytes = await resp.read()
+                        
+                        if not image_bytes:
+                            return (url, None)
+                        
+                        # 压缩处理
+                        try:
+                            img = Image.open(BytesIO(image_bytes))
+                            if img.mode != "RGB":
+                                img = img.convert("RGB")
+                            
+                            # 最大边长 1920
+                            orig_width, orig_height = img.size
+                            max_side = 1920
+                            if max(orig_width, orig_height) > max_side:
+                                if orig_width > orig_height:
+                                    new_width = max_side
+                                    new_height = int(orig_height * max_side / orig_width)
+                                else:
+                                    new_height = max_side
+                                    new_width = int(orig_width * max_side / orig_height)
+                                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                            
+                            output = BytesIO()
+                            img.save(output, format="JPEG", quality=85, optimize=True)
+                            return (url, output.getvalue())
+                        except:
+                            return (url, image_bytes)
+                            
+                    except Exception as e:
+                        debug_logger.log_error(f"[BATCH] 图片下载失败: {url[:50]}... - {str(e)}")
+                        return (url, None)
+                
+                # 并发下载所有图片
+                tasks = [download_one(url) for url in unique_urls]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for result in results:
+                    if isinstance(result, tuple) and result[1] is not None:
+                        url_to_bytes[result[0]] = result[1]
+                
+                debug_logger.log_info(f"[BATCH] 成功下载 {len(url_to_bytes)}/{len(unique_urls)} 张图片")
+            
+            # ========== 3. 上传图片并获取 mediaId ==========
+            url_to_media_id: Dict[str, str] = {}
+            if url_to_bytes:
+                async def upload_one(url: str, data: bytes) -> Tuple[str, Optional[str]]:
+                    """上传单张图片"""
+                    try:
+                        media_id = await self.flow_client.upload_image(
+                            batch.at_token, data, "IMAGE_ASPECT_RATIO_LANDSCAPE"
+                        )
+                        return (url, media_id)
+                    except Exception as e:
+                        debug_logger.log_error(f"[BATCH] 图片上传失败: {str(e)}")
+                        return (url, None)
+                
+                # 并发上传所有图片
+                upload_tasks = [upload_one(url, data) for url, data in url_to_bytes.items()]
+                upload_results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+                
+                for result in upload_results:
+                    if isinstance(result, tuple) and result[1] is not None:
+                        url_to_media_id[result[0]] = result[1]
+                
+                debug_logger.log_info(f"[BATCH] 成功上传 {len(url_to_media_id)}/{len(url_to_bytes)} 张图片")
+            
+            # ========== 4. 构建请求数据 (使用 mediaId) ==========
             url = f"{self.flow_client.api_base_url}/projects/{batch.project_id}/flowMedia:batchGenerateImages"
             
-            # 为每个请求添加 clientContext
             requests_data = []
             for req in batch.requests:
                 req_data = req.request_data.copy()
+                
+                # 填充 imageInputs
+                image_inputs = []
+                for img_url in req.image_urls:
+                    if img_url in url_to_media_id:
+                        image_inputs.append({
+                            "name": url_to_media_id[img_url],
+                            "imageInputType": "IMAGE_INPUT_TYPE_REFERENCE"
+                        })
+                
+                req_data["imageInputs"] = image_inputs
                 req_data["clientContext"] = {
                     "recaptchaToken": recaptcha_token,
                     "projectId": batch.project_id,
@@ -354,7 +474,7 @@ class BatchRequestManager:
                 "requests": requests_data
             }
             
-            # 发送请求
+            # ========== 5. 发送批量请求 ==========
             result = await self.flow_client._make_request(
                 method="POST",
                 url=url,
@@ -384,3 +504,4 @@ class BatchRequestManager:
             for req in batch.requests:
                 if not req.future.done():
                     req.future.set_exception(e)
+
