@@ -941,8 +941,8 @@ async def update_batch_config(
     # Validate values
     if max_size is not None and (max_size < 1 or max_size > 10):
         return {"success": False, "message": "max_size 必须在 1-10 之间"}
-    if collect_window_ms is not None and (collect_window_ms < 50 or collect_window_ms > 5000):
-        return {"success": False, "message": "collect_window_ms 必须在 50-5000 之间"}
+    if collect_window_ms is not None and (collect_window_ms < 50 or collect_window_ms > 50000):
+        return {"success": False, "message": "collect_window_ms 必须在 50-50000 之间"}
 
     await db.update_batch_config(max_size=max_size, collect_window_ms=collect_window_ms)
 

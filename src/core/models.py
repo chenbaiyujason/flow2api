@@ -162,7 +162,7 @@ class BatchConfig(BaseModel):
     """Batch request configuration"""
     id: int = 1
     max_size: int = 4  # 最大批次大小 (每批请求数)
-    collect_window_ms: int = 300  # 收集窗口时间 (毫秒)
+    collect_window_ms: int = 10000  # 收集窗口时间 (毫秒)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

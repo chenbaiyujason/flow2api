@@ -124,10 +124,15 @@ class ConcurrencyManager:
         Args:
             token_id: Token ID
         """
+        MAX_CONCURRENCY = 4
         async with self._lock:
             if token_id in self._image_concurrency:
-                self._image_concurrency[token_id] += 1
-                debug_logger.log_info(f"Token {token_id} released image slot (remaining: {self._image_concurrency[token_id]})")
+                # 防止超过最大值
+                if self._image_concurrency[token_id] < MAX_CONCURRENCY:
+                    self._image_concurrency[token_id] += 1
+                    debug_logger.log_info(f"Token {token_id} released image slot (remaining: {self._image_concurrency[token_id]})")
+                else:
+                    debug_logger.log_warning(f"Token {token_id} image concurrency already at max ({MAX_CONCURRENCY}), skip release")
 
     async def release_video(self, token_id: int):
         """
@@ -136,10 +141,15 @@ class ConcurrencyManager:
         Args:
             token_id: Token ID
         """
+        MAX_CONCURRENCY = 4
         async with self._lock:
             if token_id in self._video_concurrency:
-                self._video_concurrency[token_id] += 1
-                debug_logger.log_info(f"Token {token_id} released video slot (remaining: {self._video_concurrency[token_id]})")
+                # 防止超过最大值
+                if self._video_concurrency[token_id] < MAX_CONCURRENCY:
+                    self._video_concurrency[token_id] += 1
+                    debug_logger.log_info(f"Token {token_id} released video slot (remaining: {self._video_concurrency[token_id]})")
+                else:
+                    debug_logger.log_warning(f"Token {token_id} video concurrency already at max ({MAX_CONCURRENCY}), skip release")
 
     async def get_image_remaining(self, token_id: int) -> Optional[int]:
         """

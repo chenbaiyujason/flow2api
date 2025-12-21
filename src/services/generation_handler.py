@@ -411,6 +411,12 @@ class GenerationHandler:
             if not await self.token_manager.is_at_valid(token.id):
                 error_msg = "Token AT无效或刷新失败"
                 debug_logger.log_error(f"[GENERATION] {error_msg}")
+                # 释放并发槽位 (select_token 已经 acquire)
+                if self.concurrency_manager:
+                    if generation_type == "image":
+                        await self.concurrency_manager.release_image(token.id)
+                    else:
+                        await self.concurrency_manager.release_video(token.id)
                 if stream:
                     yield self._create_stream_chunk(f"❌ {error_msg}\n")
                 yield self._create_error_response(error_msg)
@@ -462,6 +468,14 @@ class GenerationHandler:
         except Exception as e:
             error_msg = f"生成失败: {str(e)}"
             debug_logger.log_error(f"[GENERATION] ❌ {error_msg}")
+            # 释放并发槽位 - 只有在异常发生在调用 _handle_xxx 之前才需要
+            # 因为 _handle_xxx 内部有自己的 release
+            # 但为了安全起见，这里的 release 会被 concurrency_manager 的上限检查拦截
+            if self.concurrency_manager and token:
+                if generation_type == "image":
+                    await self.concurrency_manager.release_image(token.id)
+                else:
+                    await self.concurrency_manager.release_video(token.id)
             if stream:
                 yield self._create_stream_chunk(f"❌ {error_msg}\n")
             if token:

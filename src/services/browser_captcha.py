@@ -244,7 +244,7 @@ class BrowserCaptchaService:
                         await new Promise((resolve, reject) => {
                             const timeout = setTimeout(() => {
                                 reject(new Error('reCAPTCHA加载超时'));
-                            }, 15000);
+                            }, 150000);
 
                             if (window.grecaptcha && window.grecaptcha.ready) {
                                 window.grecaptcha.ready(() => {
