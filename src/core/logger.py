@@ -103,8 +103,7 @@ class DebugLogger:
             self.logger.info(f"Method: {method}")
             self.logger.info(f"URL: {url}")
 
-            # Headers
-            self.logger.info("\n📋 Headers:")
+            # Headers - prepare masking
             masked_headers = dict(headers)
             if "Authorization" in masked_headers or "authorization" in masked_headers:
                 auth_key = "Authorization" if "Authorization" in masked_headers else "authorization"
@@ -122,8 +121,9 @@ class DebugLogger:
                         st_token = parts[1].split(";")[0]
                         masked_headers["Cookie"] = f"__Secure-next-auth.session-token={self._mask_token(st_token)}"
 
-            for key, value in masked_headers.items():
-                self.logger.info(f"  {key}: {value}")
+            # Headers as single line JSON
+            headers_str = json.dumps(masked_headers, ensure_ascii=False, separators=(',', ':'))
+            self.logger.info(f"📋 Headers: {headers_str}")
 
             # Body
             if body is not None:
@@ -182,10 +182,9 @@ class DebugLogger:
             if duration_ms is not None:
                 self.logger.info(f"Duration: {duration_ms:.2f}ms")
 
-            # Headers
-            self.logger.info("\n📋 Response Headers:")
-            for key, value in headers.items():
-                self.logger.info(f"  {key}: {value}")
+            # Headers as single line JSON
+            headers_str = json.dumps(dict(headers), ensure_ascii=False, separators=(',', ':'))
+            self.logger.info(f"📋 Response Headers: {headers_str}")
 
             # Body
             self.logger.info("\n📦 Response Body:")

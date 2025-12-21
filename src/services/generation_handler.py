@@ -648,15 +648,8 @@ class GenerationHandler:
 
             # 图片数量
             image_count = len(image_urls) if image_urls else 0
-            
-            # 下载并处理图片 (并发处理)
-            images: List[bytes] = []
-            if image_urls:
-                if stream:
-                    yield self._create_stream_chunk(f"正在处理 {len(image_urls)} 张图片...\\n")
-                images = await self._download_and_process_images(image_urls, model_config.get("model_key", ""))
 
-            # ========== 验证和处理图片 ==========
+            # ========== 验证图片数量 ==========
 
             # T2V: 文生视频 - 不支持图片
             if video_type == "t2v":
@@ -664,8 +657,7 @@ class GenerationHandler:
                     if stream:
                         yield self._create_stream_chunk("⚠️ 文生视频模型不支持上传图片,将忽略图片仅使用文本提示词生成\\n")
                     debug_logger.log_warning(f"[T2V] 模型 {model_config['model_key']} 不支持图片,已忽略 {image_count} 张图片")
-                images = []  # 清空图片
-
+                image_urls = []  # 清空图片URL
                 image_count = 0
 
             # I2V: 首尾帧模型 - 需要1-2张图片
@@ -681,49 +673,6 @@ class GenerationHandler:
             elif video_type == "r2v":
                 # 不再限制最大图片数量
                 pass
-
-            # ========== 上传图片 ==========
-            start_media_id = None
-            end_media_id = None
-            reference_images = []
-
-            # I2V: 首尾帧处理
-            if video_type == "i2v" and images:
-                if image_count == 1:
-                    # 只有1张图: 仅作为首帧
-                    if stream:
-                        yield self._create_stream_chunk("上传首帧图片...\n")
-                    start_media_id = await self.flow_client.upload_image(
-                        token.at, images[0], model_config["aspect_ratio"]
-                    )
-                    debug_logger.log_info(f"[I2V] 仅上传首帧: {start_media_id}")
-
-                elif image_count == 2:
-                    # 2张图: 首帧+尾帧
-                    if stream:
-                        yield self._create_stream_chunk("上传首帧和尾帧图片...\n")
-                    start_media_id = await self.flow_client.upload_image(
-                        token.at, images[0], model_config["aspect_ratio"]
-                    )
-                    end_media_id = await self.flow_client.upload_image(
-                        token.at, images[1], model_config["aspect_ratio"]
-                    )
-                    debug_logger.log_info(f"[I2V] 上传首尾帧: {start_media_id}, {end_media_id}")
-
-            # R2V: 多图处理
-            elif video_type == "r2v" and images:
-                if stream:
-                    yield self._create_stream_chunk(f"上传 {image_count} 张参考图片...\n")
-
-                for idx, img in enumerate(images):  # 上传所有图片,不限制数量
-                    media_id = await self.flow_client.upload_image(
-                        token.at, img, model_config["aspect_ratio"]
-                    )
-                    reference_images.append({
-                        "imageUsageType": "IMAGE_USAGE_TYPE_ASSET",
-                        "mediaId": media_id
-                    })
-                debug_logger.log_info(f"[R2V] 上传了 {len(reference_images)} 张参考图片")
 
             # ========== 调用生成API ==========
             if stream:
@@ -746,34 +695,30 @@ class GenerationHandler:
                 }
             }
             
-            # 根据视频类型确定端点和添加额外字段
-            if video_type == "i2v" and start_media_id:
-                if end_media_id:
-                    # 首尾帧
+            # 根据视频类型确定端点 (图片由 batch_manager 处理)
+            if video_type == "i2v" and image_count > 0:
+                if image_count == 2:
                     endpoint = "batchAsyncGenerateVideoStartAndEndImage"
-                    request_data["startImage"] = {"mediaId": start_media_id}
-                    request_data["endImage"] = {"mediaId": end_media_id}
                 else:
-                    # 仅首帧
                     endpoint = "batchAsyncGenerateVideoStartImage"
-                    request_data["startImage"] = {"mediaId": start_media_id}
-            elif video_type == "r2v" and reference_images:
-                # 多参考图
+            elif video_type == "r2v" and image_count > 0:
                 endpoint = "batchAsyncGenerateVideoReferenceImages"
-                request_data["referenceImages"] = reference_images
             else:
-                # T2V 文生视频
                 endpoint = "batchAsyncGenerateVideoText"
             
             # 使用批量管理器或直接调用
             if self.batch_manager:
                 # 通过批量管理器提交请求
+                # 图片处理和去重由 batch_manager 统一处理
                 future = await self.batch_manager.submit_video_request(
                     token_id=token.id,
                     at_token=token.at,
                     project_id=project_id,
                     endpoint=endpoint,
                     request_data=request_data,
+                    image_urls=image_urls,  # 传递原始URL列表
+                    video_type=video_type,
+                    aspect_ratio=model_config["aspect_ratio"],
                     user_paygate_tier=token.user_paygate_tier or "PAYGATE_TIER_ONE"
                 )
                 
@@ -784,6 +729,49 @@ class GenerationHandler:
                 operations = [operation]
             else:
                 # 回退到直接调用 (兼容无批量管理器的情况)
+                # 需要在这里处理图片
+                images: List[bytes] = []
+                if image_urls:
+                    if stream:
+                        yield self._create_stream_chunk(f"正在处理 {len(image_urls)} 张图片...\\n")
+                    images = await self._download_and_process_images(image_urls, model_config.get("model_key", ""))
+                
+                start_media_id = None
+                end_media_id = None
+                reference_images = []
+                
+                # I2V: 首尾帧处理
+                if video_type == "i2v" and images:
+                    if len(images) == 1:
+                        if stream:
+                            yield self._create_stream_chunk("上传首帧图片...\n")
+                        start_media_id = await self.flow_client.upload_image(
+                            token.at, images[0], model_config["aspect_ratio"]
+                        )
+                    elif len(images) >= 2:
+                        if stream:
+                            yield self._create_stream_chunk("上传首帧和尾帧图片...\n")
+                        start_media_id = await self.flow_client.upload_image(
+                            token.at, images[0], model_config["aspect_ratio"]
+                        )
+                        end_media_id = await self.flow_client.upload_image(
+                            token.at, images[1], model_config["aspect_ratio"]
+                        )
+                
+                # R2V: 多图处理
+                elif video_type == "r2v" and images:
+                    if stream:
+                        yield self._create_stream_chunk(f"上传 {len(images)} 张参考图片...\n")
+                    for img in images:
+                        media_id = await self.flow_client.upload_image(
+                            token.at, img, model_config["aspect_ratio"]
+                        )
+                        reference_images.append({
+                            "imageUsageType": "IMAGE_USAGE_TYPE_ASSET",
+                            "mediaId": media_id
+                        })
+                
+                # 调用生成API
                 if video_type == "i2v" and start_media_id:
                     if end_media_id:
                         result = await self.flow_client.generate_video_start_end(

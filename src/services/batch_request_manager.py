@@ -18,6 +18,8 @@ class PendingRequest:
     future: Optional[asyncio.Future] = None  # 在创建时设置
     image_urls: List[str] = field(default_factory=list)  # 图片URL列表
     model: str = ""                    # 模型名称
+    video_type: str = ""               # 视频类型: t2v, i2v, r2v
+    aspect_ratio: str = ""             # 视频宽高比
     created_at: float = field(default_factory=time.time)
 
 
@@ -87,6 +89,9 @@ class BatchRequestManager:
         project_id: str,
         endpoint: str,
         request_data: Dict,
+        image_urls: Optional[List[str]] = None,
+        video_type: str = "",
+        aspect_ratio: str = "",
         user_paygate_tier: str = "PAYGATE_TIER_ONE"
     ) -> asyncio.Future:
         """
@@ -98,6 +103,9 @@ class BatchRequestManager:
             project_id: 项目ID
             endpoint: API端点 (如 batchAsyncGenerateVideoText)
             request_data: 请求数据 (不含 clientContext, 包含 aspectRatio, seed, textInput 等)
+            image_urls: 图片URL列表 (将在batch中统一处理)
+            video_type: 视频类型 (t2v, i2v, r2v)
+            aspect_ratio: 视频宽高比
             user_paygate_tier: 用户等级
             
         Returns:
@@ -117,6 +125,9 @@ class BatchRequestManager:
             request_id=str(uuid.uuid4()),
             scene_id=scene_id,
             request_data=request_data,
+            image_urls=image_urls or [],
+            video_type=video_type,
+            aspect_ratio=aspect_ratio,
             future=loop.create_future()
         )
         
@@ -268,7 +279,7 @@ class BatchRequestManager:
             pass
     
     async def _send_video_batch(self, batch: PendingBatch):
-        """发送视频批量请求"""
+        """发送视频批量请求 - 带URL去重和统一上传"""
         try:
             # 获取共享的 recaptcha_token
             recaptcha_token = await self.flow_client._get_recaptcha_token(batch.project_id) or ""
@@ -279,7 +290,136 @@ class BatchRequestManager:
                 f"端点: {batch.endpoint}, 请求数: {len(batch.requests)}"
             )
             
-            # 构建批量请求
+            # ========== 1. 收集并去重所有图片URL ==========
+            all_urls = set()
+            for req in batch.requests:
+                if req.image_urls:
+                    all_urls.update(req.image_urls)
+            
+            unique_urls = list(all_urls)
+            if unique_urls:
+                debug_logger.log_info(f"[BATCH] 视频批次共收集到 {len(unique_urls)} 个唯一图片URL")
+            
+            # ========== 2. 并发下载和处理图片 ==========
+            url_to_bytes: Dict[str, bytes] = {}
+            if unique_urls:
+                async def download_one(url: str) -> Tuple[str, Optional[bytes]]:
+                    """下载并处理单张图片"""
+                    try:
+                        import re
+                        import aiohttp
+                        from io import BytesIO
+                        from PIL import Image
+                        import base64
+                        
+                        image_bytes = None
+                        
+                        if url.startswith("data:image"):
+                            # Base64 格式
+                            match = re.search(r"base64,(.+)", url)
+                            if match:
+                                image_bytes = base64.b64decode(match.group(1))
+                        elif url.startswith("http"):
+                            # HTTP URL
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                                    if resp.status == 200:
+                                        image_bytes = await resp.read()
+                        
+                        if not image_bytes:
+                            return (url, None)
+                        
+                        # 压缩处理
+                        try:
+                            img = Image.open(BytesIO(image_bytes))
+                            if img.mode != "RGB":
+                                img = img.convert("RGB")
+                            
+                            # 最大边长 1920
+                            orig_width, orig_height = img.size
+                            max_side = 1920
+                            if max(orig_width, orig_height) > max_side:
+                                if orig_width > orig_height:
+                                    new_width = max_side
+                                    new_height = int(orig_height * max_side / orig_width)
+                                else:
+                                    new_height = max_side
+                                    new_width = int(orig_width * max_side / orig_height)
+                                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                            
+                            output = BytesIO()
+                            img.save(output, format="JPEG", quality=85, optimize=True)
+                            return (url, output.getvalue())
+                        except:
+                            return (url, image_bytes)
+                            
+                    except Exception as e:
+                        debug_logger.log_error(f"[BATCH] 视频图片下载失败: {url[:50]}... - {str(e)}")
+                        return (url, None)
+                
+                # 并发下载所有图片
+                tasks = [download_one(url) for url in unique_urls]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                for result in results:
+                    if isinstance(result, tuple) and result[1] is not None:
+                        url_to_bytes[result[0]] = result[1]
+                
+                debug_logger.log_info(f"[BATCH] 视频批次成功下载 {len(url_to_bytes)}/{len(unique_urls)} 张图片")
+            
+            # ========== 3. 上传图片并获取 mediaId ==========
+            url_to_media_id: Dict[str, str] = {}
+            if url_to_bytes:
+                # 获取第一个请求的 aspect_ratio 作为上传参数
+                aspect_ratio = batch.requests[0].aspect_ratio if batch.requests else "VIDEO_ASPECT_RATIO_LANDSCAPE"
+                
+                async def upload_one(url: str, data: bytes) -> Tuple[str, Optional[str]]:
+                    """上传单张图片"""
+                    try:
+                        media_id = await self.flow_client.upload_image(
+                            batch.at_token, data, aspect_ratio
+                        )
+                        return (url, media_id)
+                    except Exception as e:
+                        debug_logger.log_error(f"[BATCH] 视频图片上传失败: {str(e)}")
+                        return (url, None)
+                
+                # 并发上传所有图片
+                upload_tasks = [upload_one(url, data) for url, data in url_to_bytes.items()]
+                upload_results = await asyncio.gather(*upload_tasks, return_exceptions=True)
+                
+                for result in upload_results:
+                    if isinstance(result, tuple) and result[1] is not None:
+                        url_to_media_id[result[0]] = result[1]
+                
+                debug_logger.log_info(f"[BATCH] 视频批次成功上传 {len(url_to_media_id)}/{len(url_to_bytes)} 张图片")
+            
+            # ========== 4. 为每个请求填充 mediaId ==========
+            for req in batch.requests:
+                if not req.image_urls:
+                    continue
+                
+                video_type = req.video_type
+                
+                if video_type == "i2v":
+                    # I2V: 首帧/首尾帧
+                    if len(req.image_urls) >= 1 and req.image_urls[0] in url_to_media_id:
+                        req.request_data["startImage"] = {"mediaId": url_to_media_id[req.image_urls[0]]}
+                    if len(req.image_urls) >= 2 and req.image_urls[1] in url_to_media_id:
+                        req.request_data["endImage"] = {"mediaId": url_to_media_id[req.image_urls[1]]}
+                
+                elif video_type == "r2v":
+                    # R2V: 多参考图
+                    reference_images = []
+                    for img_url in req.image_urls:
+                        if img_url in url_to_media_id:
+                            reference_images.append({
+                                "imageUsageType": "IMAGE_USAGE_TYPE_ASSET",
+                                "mediaId": url_to_media_id[img_url]
+                            })
+                    req.request_data["referenceImages"] = reference_images
+            
+            # ========== 5. 构建批量请求 ==========
             url = f"{self.flow_client.api_base_url}/video:{batch.endpoint}"
             
             json_data = {
