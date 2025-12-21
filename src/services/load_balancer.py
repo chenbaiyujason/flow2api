@@ -92,6 +92,7 @@ class LoadBalancer:
 
         # 'Fill First' strategy: select token with most remaining concurrency
         # This helps batch requests to the same token
+        # When remaining is equal, prefer smaller token ID for stable selection
         if self.concurrency_manager:
             best_token = None
             max_remaining = -1
@@ -108,7 +109,8 @@ class LoadBalancer:
                 if remaining is None:
                     remaining = float('inf')
                 
-                if remaining > max_remaining:
+                # Select if more remaining, or same remaining but smaller ID (stable selection)
+                if remaining > max_remaining or (remaining == max_remaining and (best_token is None or token.id < best_token.id)):
                     max_remaining = remaining
                     best_token = token
             
@@ -118,6 +120,7 @@ class LoadBalancer:
                     f"余额: {best_token.credits}, 剩余并发: {max_remaining if max_remaining != float('inf') else '无限制'}"
                 )
                 return best_token
+
         
         # Fallback to random if no concurrency manager
         selected = random.choice(available_tokens)
