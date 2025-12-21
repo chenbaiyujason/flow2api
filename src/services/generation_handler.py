@@ -940,7 +940,7 @@ class GenerationHandler:
                         await self.concurrency_manager.release_video(token.id)
                     return
 
-                elif status.startswith("MEDIA_GENERATION_STATUS_ERROR"):
+                elif status.startswith("MEDIA_GENERATION_STATUS_ERROR") or status == "MEDIA_GENERATION_STATUS_FAILED":
                     # 失败 - 释放并发槽位
                     if self.concurrency_manager:
                         await self.concurrency_manager.release_video(token.id)

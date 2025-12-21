@@ -130,7 +130,7 @@ class DebugLogger:
                 self.logger.info("\n📦 Request Body:")
                 sanitized_body = self._sanitize_body(body)
                 if isinstance(sanitized_body, (dict, list)):
-                    body_str = json.dumps(sanitized_body, indent=2, ensure_ascii=False)
+                    body_str = json.dumps(sanitized_body, ensure_ascii=False, separators=(',', ':'))
                     self.logger.info(body_str)
                 else:
                     self.logger.info(str(body))
@@ -191,14 +191,14 @@ class DebugLogger:
             self.logger.info("\n📦 Response Body:")
             if isinstance(body, (dict, list)):
                 sanitized_body = self._sanitize_body(body)
-                body_str = json.dumps(sanitized_body, indent=2, ensure_ascii=False)
+                body_str = json.dumps(sanitized_body, ensure_ascii=False, separators=(',', ':'))
                 self.logger.info(body_str)
             elif isinstance(body, str):
                 # Try to parse as JSON
                 try:
                     parsed = json.loads(body)
                     sanitized_body = self._sanitize_body(parsed)
-                    body_str = json.dumps(sanitized_body, indent=2, ensure_ascii=False)
+                    body_str = json.dumps(sanitized_body, ensure_ascii=False, separators=(',', ':'))
                     self.logger.info(body_str)
                 except:
                     # Not JSON, log as text (limit length)
@@ -241,7 +241,7 @@ class DebugLogger:
                 # Try to parse as JSON
                 try:
                     parsed = json.loads(response_text)
-                    body_str = json.dumps(parsed, indent=2, ensure_ascii=False)
+                    body_str = json.dumps(parsed, ensure_ascii=False, separators=(',', ':'))
                     self.logger.info(body_str)
                 except:
                     # Not JSON, log as text
