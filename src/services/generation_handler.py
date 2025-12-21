@@ -502,12 +502,7 @@ class GenerationHandler:
     ) -> AsyncGenerator:
         """处理图片生成 (同步返回)"""
 
-        # 获取并发槽位
-        if self.concurrency_manager:
-            if not await self.concurrency_manager.acquire_image(token.id):
-                yield self._create_error_response("图片并发限制已达上限")
-                return
-
+        # 并发槽位已在 select_token 中原子性获取，这里直接开始处理
         try:
             import random
             
@@ -629,12 +624,7 @@ class GenerationHandler:
     ) -> AsyncGenerator:
         """处理视频生成 (异步轮询)"""
 
-        # 获取并发槽位
-        if self.concurrency_manager:
-            if not await self.concurrency_manager.acquire_video(token.id):
-                yield self._create_error_response("视频并发限制已达上限")
-                return
-
+        # 并发槽位已在 select_token 中原子性获取，这里直接开始处理
         try:
             # 获取模型类型和配置
             video_type = model_config.get("video_type")
@@ -885,6 +875,8 @@ class GenerationHandler:
                     video_url = video_info.get("fifeUrl")
 
                     if not video_url:
+                        if self.concurrency_manager:
+                            await self.concurrency_manager.release_video(token.id)
                         yield self._create_error_response("视频URL为空")
                         return
 
@@ -929,10 +921,15 @@ class GenerationHandler:
                             local_url,  # 直接传URL,让方法内部格式化
                             media_type="video"
                         )
+                    # 成功 - 释放并发槽位
+                    if self.concurrency_manager:
+                        await self.concurrency_manager.release_video(token.id)
                     return
 
                 elif status.startswith("MEDIA_GENERATION_STATUS_ERROR"):
-                    # 失败
+                    # 失败 - 释放并发槽位
+                    if self.concurrency_manager:
+                        await self.concurrency_manager.release_video(token.id)
                     yield self._create_error_response(f"视频生成失败: {status}")
                     return
 
@@ -940,7 +937,9 @@ class GenerationHandler:
                 debug_logger.log_error(f"Poll error: {str(e)}")
                 continue
 
-        # 超时
+        # 超时 - 释放并发槽位后返回错误
+        if self.concurrency_manager:
+            await self.concurrency_manager.release_video(token.id)
         yield self._create_error_response(f"视频生成超时 (已轮询{max_attempts}次)")
 
     # ========== 响应格式化 ==========

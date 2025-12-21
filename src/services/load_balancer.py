@@ -90,12 +90,13 @@ class LoadBalancer:
             debug_logger.log_info(f"[LOAD_BALANCER] ❌ 没有可用的Token (图片生成={for_image_generation}, 视频生成={for_video_generation})")
             return None
 
-        # 'Fill First' strategy: select token with most remaining concurrency
-        # This helps batch requests to the same token
+        # 'Fill First' strategy: select token with LEAST remaining concurrency (but > 0)
+        # This prioritizes filling up one token to batch requests together
         # When remaining is equal, prefer smaller token ID for stable selection
+        # IMPORTANT: Atomically acquire concurrency slot during selection to prevent race conditions
         if self.concurrency_manager:
             best_token = None
-            max_remaining = -1
+            min_remaining = float('inf')  # Start with infinity, find minimum
             
             for token in available_tokens:
                 if for_image_generation:
@@ -106,22 +107,49 @@ class LoadBalancer:
                     # 默认使用图片并发
                     remaining = await self.concurrency_manager.get_image_remaining(token.id)
                 
-                # None means no limit, treat as infinite
+                # None means no limit, treat as infinite (lowest priority for fill-first)
                 if remaining is None:
-                    debug_logger.log_info(f"[LOAD_BALANCER] Token {token.id} 没有获取到并发限制，视为无限")
+                    debug_logger.log_info(f"[LOAD_BALANCER] Token {token.id} 没有并发限制，视为无限")
                     remaining = float('inf')
+                elif remaining <= 0:
+                    debug_logger.log_info(f"[LOAD_BALANCER] Token {token.id} 并发已满 (剩余: {remaining})，跳过")
+                    continue  # Skip tokens with no remaining slots
                 
-                # Select if more remaining, or same remaining but smaller ID (stable selection)
-                if remaining > max_remaining or (remaining == max_remaining and (best_token is None or token.id < best_token.id)):
-                    max_remaining = remaining
+                # Select if LESS remaining (to batch together), or same remaining but smaller ID
+                if remaining < min_remaining or (remaining == min_remaining and (best_token is None or token.id < best_token.id)):
+                    min_remaining = remaining
                     best_token = token
+
             
             if best_token:
-                debug_logger.log_info(
-                    f"[LOAD_BALANCER] ✅ 已选择Token {best_token.id} ({best_token.email}) - "
-                    f"余额: {best_token.credits}, 剩余并发: {max_remaining if max_remaining != float('inf') else '无限制'}"
-                )
-                return best_token
+                # ⚡ 关键修复: 原子性地获取并发槽位
+                # 如果获取失败，递归重新选择 (排除当前 token)
+                if for_image_generation:
+                    acquired = await self.concurrency_manager.acquire_image(best_token.id)
+                elif for_video_generation:
+                    acquired = await self.concurrency_manager.acquire_video(best_token.id)
+                else:
+                    acquired = await self.concurrency_manager.acquire_image(best_token.id)
+                
+                if acquired:
+                    debug_logger.log_info(
+                        f"[LOAD_BALANCER] ✅ 已选择Token {best_token.id} ({best_token.email}) - "
+                        f"余额: {best_token.credits}, 剩余并发: {min_remaining if min_remaining != float('inf') else '无限制'}"
+                    )
+                    return best_token
+                else:
+                    # 获取失败（其他请求抢先获取了），从列表中移除后重试
+                    debug_logger.log_info(f"[LOAD_BALANCER] Token {best_token.id} 并发获取失败，重新选择")
+                    available_tokens = [t for t in available_tokens if t.id != best_token.id]
+                    if available_tokens:
+                        # 递归重试
+                        return await self.select_token(for_image_generation, for_video_generation, model)
+                    else:
+                        debug_logger.log_info(f"[LOAD_BALANCER] ❌ 所有Token并发已满")
+                        return None
+            else:
+                debug_logger.log_info(f"[LOAD_BALANCER] ❌ 所有Token并发已满")
+                return None
 
         
         # Fallback to random if no concurrency manager
