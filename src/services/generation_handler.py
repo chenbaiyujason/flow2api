@@ -163,14 +163,23 @@ MODEL_CONFIG = {
     },
 
     # ========== 多参考图生成 (R2V - Reference Images to Video) ==========
-    # 支持多张参考图片，只支持横屏，Quality 模型不支持
+    # 支持多张参考图片，3.1版本支持横屏和竖屏，Quality 模型不支持
 
-    # Fast 模型 - 多参考图生成 (只支持横屏)
-    "veo_3_0_r2v_fast_ultra": {
+    # Fast 模型 - 多参考图生成
+    "veo_3_1_r2v_fast_landscape_ultra": {  # 横屏
         "type": "video",
         "video_type": "r2v",
-        "model_key": "veo_3_0_r2v_fast_ultra",
+        "model_key": "veo_3_1_r2v_fast_landscape_ultra",
         "aspect_ratio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        "supports_images": True,
+        "min_images": 1,
+        "max_images": None  # 不限制
+    },
+    "veo_3_1_r2v_fast_portrait_ultra": {  # 竖屏
+        "type": "video",
+        "video_type": "r2v",
+        "model_key": "veo_3_1_r2v_fast_portrait_ultra",
+        "aspect_ratio": "VIDEO_ASPECT_RATIO_PORTRAIT",
         "supports_images": True,
         "min_images": 1,
         "max_images": None  # 不限制

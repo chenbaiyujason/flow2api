@@ -430,7 +430,7 @@ class FlowClient:
             at: Access Token
             project_id: 项目ID
             prompt: 提示词
-            model_key: veo_3_0_r2v_fast
+            model_key: veo_3_1_r2v_fast_landscape_ultra 或 veo_3_1_r2v_fast_portrait_ultra
             aspect_ratio: 视频宽高比
             reference_images: 参考图片列表 [{"imageUsageType": "IMAGE_USAGE_TYPE_ASSET", "mediaId": "..."}]
             user_paygate_tier: 用户等级
