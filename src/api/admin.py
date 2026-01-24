@@ -879,6 +879,9 @@ async def update_captcha_config(
     yescaptcha_api_key = request.get("yescaptcha_api_key")
     yescaptcha_base_url = request.get("yescaptcha_base_url")
     yescaptcha_task_type = request.get("yescaptcha_task_type")
+    twocaptcha_api_key = request.get("twocaptcha_api_key")
+    twocaptcha_base_url = request.get("twocaptcha_base_url")
+    twocaptcha_min_score = request.get("twocaptcha_min_score")
     browser_proxy_enabled = request.get("browser_proxy_enabled", False)
     browser_proxy_url = request.get("browser_proxy_url", "")
 
@@ -888,11 +891,19 @@ async def update_captcha_config(
         if not is_valid:
             return {"success": False, "message": error_msg}
 
+    # 验证2Captcha min_score值
+    if twocaptcha_min_score is not None:
+        if twocaptcha_min_score not in [0.3, 0.7, 0.9]:
+            return {"success": False, "message": "2Captcha min_score 必须是 0.3, 0.7 或 0.9"}
+
     await db.update_captcha_config(
         captcha_method=captcha_method,
         yescaptcha_api_key=yescaptcha_api_key,
         yescaptcha_base_url=yescaptcha_base_url,
         yescaptcha_task_type=yescaptcha_task_type,
+        twocaptcha_api_key=twocaptcha_api_key,
+        twocaptcha_base_url=twocaptcha_base_url,
+        twocaptcha_min_score=twocaptcha_min_score,
         browser_proxy_enabled=browser_proxy_enabled,
         browser_proxy_url=browser_proxy_url if browser_proxy_enabled else None
     )
@@ -912,6 +923,9 @@ async def get_captcha_config(token: str = Depends(verify_admin_token)):
         "yescaptcha_api_key": captcha_config.yescaptcha_api_key,
         "yescaptcha_base_url": captcha_config.yescaptcha_base_url,
         "yescaptcha_task_type": captcha_config.yescaptcha_task_type,
+        "twocaptcha_api_key": captcha_config.twocaptcha_api_key,
+        "twocaptcha_base_url": captcha_config.twocaptcha_base_url,
+        "twocaptcha_min_score": captcha_config.twocaptcha_min_score,
         "browser_proxy_enabled": captcha_config.browser_proxy_enabled,
         "browser_proxy_url": captcha_config.browser_proxy_url or ""
     }

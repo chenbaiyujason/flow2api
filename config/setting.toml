@@ -37,7 +37,10 @@ timeout = 7200  # 缓存超时时间(秒), 默认2小时
 base_url = ""   # 缓存文件访问的基础URL, 留空则使用服务器地址
 
 [captcha]
-captcha_method = "browser"  # 打码方式: yescaptcha 或 browser
+captcha_method = "browser"  # 打码方式: yescaptcha, 2captcha, browser 或 personal
 yescaptcha_api_key = ""  # YesCaptcha API密钥
 yescaptcha_base_url = "https://api.yescaptcha.com"
 yescaptcha_task_type = "RecaptchaV3TaskProxylessM1S7"  # YesCaptcha任务类型
+twocaptcha_api_key = ""  # 2Captcha API密钥
+twocaptcha_base_url = "https://api.2captcha.com"
+twocaptcha_min_score = 0.3  # 2Captcha最小分数: 0.3, 0.7 或 0.9

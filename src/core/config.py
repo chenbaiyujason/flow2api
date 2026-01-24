@@ -224,6 +224,40 @@ class Config:
             self._config["captcha"] = {}
         self._config["captcha"]["yescaptcha_task_type"] = task_type
 
+    # 2Captcha configuration
+    @property
+    def twocaptcha_api_key(self) -> str:
+        """Get 2Captcha API key"""
+        return self._config.get("captcha", {}).get("twocaptcha_api_key", "")
+
+    def set_twocaptcha_api_key(self, api_key: str):
+        """Set 2Captcha API key"""
+        if "captcha" not in self._config:
+            self._config["captcha"] = {}
+        self._config["captcha"]["twocaptcha_api_key"] = api_key
+
+    @property
+    def twocaptcha_base_url(self) -> str:
+        """Get 2Captcha base URL"""
+        return self._config.get("captcha", {}).get("twocaptcha_base_url", "https://api.2captcha.com")
+
+    def set_twocaptcha_base_url(self, base_url: str):
+        """Set 2Captcha base URL"""
+        if "captcha" not in self._config:
+            self._config["captcha"] = {}
+        self._config["captcha"]["twocaptcha_base_url"] = base_url
+
+    @property
+    def twocaptcha_min_score(self) -> float:
+        """Get 2Captcha min score (0.3, 0.7, or 0.9)"""
+        return self._config.get("captcha", {}).get("twocaptcha_min_score", 0.3)
+
+    def set_twocaptcha_min_score(self, min_score: float):
+        """Set 2Captcha min score"""
+        if "captcha" not in self._config:
+            self._config["captcha"] = {}
+        self._config["captcha"]["twocaptcha_min_score"] = min_score
+
     # Batch configuration
     @property
     def batch_max_size(self) -> int:
