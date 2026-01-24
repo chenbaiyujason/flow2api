@@ -806,7 +806,7 @@ class FlowClient:
                 return None
 
             website_key = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
-            website_url = f"https://labs.google/fx/tools/flow/project/{project_id}"
+            website_url = "https://labs.google/"
             base_url = config.twocaptcha_base_url
             page_action = action
             min_score = config.twocaptcha_min_score
@@ -892,7 +892,7 @@ class FlowClient:
                 return None
 
             website_key = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
-            website_url = f"https://labs.google/fx/tools/flow/project/{project_id}"
+            website_url = "https://labs.google/"
             base_url = config.yescaptcha_base_url
             page_action = action
             task_type = config.yescaptcha_task_type
