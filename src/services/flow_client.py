@@ -805,8 +805,8 @@ class FlowClient:
             min_score = config.twocaptcha_min_score
             is_enterprise = config.twocaptcha_is_enterprise
 
-            # 根据isEnterprise选择任务类型
-            task_type = "RecaptchaV3EnterpriseTaskProxyless" if is_enterprise else "RecaptchaV3TaskProxyless"
+            # 根据官方文档，统一使用 RecaptchaV3TaskProxyless，通过 isEnterprise 参数区分
+            task_type = "RecaptchaV3TaskProxyless"
             debug_logger.log_info(f"[reCAPTCHA] Platform: 2Captcha, Type: {task_type} (minScore: {min_score}, pageAction: {page_action}, isEnterprise: {is_enterprise})")
 
             try:
@@ -819,7 +819,7 @@ class FlowClient:
                         "minScore": min_score,
                         "pageAction": page_action
                     }
-                    # 如果是Enterprise版本，添加isEnterprise参数
+                    # 根据官方文档，isEnterprise 是可选参数，用于标识 Enterprise 版本
                     if is_enterprise:
                         task_data["isEnterprise"] = True
                     
@@ -830,14 +830,24 @@ class FlowClient:
 
                     result = await session.post(create_url, json=create_data, impersonate="chrome110")
                     result_json = result.json()
+                    
+                    # 检查是否有错误
+                    error_id = result_json.get('errorId', 0)
+                    if error_id != 0:
+                        error_description = result_json.get('errorDescription', 'Unknown error')
+                        error_code = result_json.get('errorCode', '')
+                        debug_logger.log_error(f"[reCAPTCHA 2Captcha] Error {error_id}: {error_description}")
+                        if error_code:
+                            debug_logger.log_error(f"[reCAPTCHA 2Captcha] Error Code: {error_code}")
+                        debug_logger.log_error(f"[reCAPTCHA 2Captcha] Response: {result_json}")
+                        return None
+                    
                     task_id = result_json.get('taskId')
 
                     debug_logger.log_info(f"[reCAPTCHA 2Captcha] created task_id: {task_id}")
 
                     if not task_id:
-                        error_id = result_json.get('errorId')
-                        error_description = result_json.get('errorDescription', 'Unknown error')
-                        debug_logger.log_error(f"[reCAPTCHA 2Captcha] Error {error_id}: {error_description}")
+                        debug_logger.log_error(f"[reCAPTCHA 2Captcha] No taskId in response: {result_json}")
                         return None
 
                     get_url = f"{base_url}/getTaskResult"
