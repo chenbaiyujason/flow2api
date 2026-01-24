@@ -150,6 +150,7 @@ class CaptchaConfig(BaseModel):
     captcha_method: str = "browser"  # yescaptcha 或 browser
     yescaptcha_api_key: str = ""
     yescaptcha_base_url: str = "https://api.yescaptcha.com"
+    yescaptcha_task_type: str = "RecaptchaV3TaskProxylessM1S7"  # YesCaptcha任务类型
     website_key: str = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
     page_action: str = "FLOW_GENERATION"
     browser_proxy_enabled: bool = False  # 浏览器打码是否启用代理

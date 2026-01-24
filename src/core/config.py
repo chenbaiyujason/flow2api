@@ -213,6 +213,17 @@ class Config:
             self._config["captcha"] = {}
         self._config["captcha"]["yescaptcha_base_url"] = base_url
 
+    @property
+    def yescaptcha_task_type(self) -> str:
+        """Get YesCaptcha task type"""
+        return self._config.get("captcha", {}).get("yescaptcha_task_type", "RecaptchaV3TaskProxylessM1S7")
+
+    def set_yescaptcha_task_type(self, task_type: str):
+        """Set YesCaptcha task type"""
+        if "captcha" not in self._config:
+            self._config["captcha"] = {}
+        self._config["captcha"]["yescaptcha_task_type"] = task_type
+
     # Batch configuration
     @property
     def batch_max_size(self) -> int:

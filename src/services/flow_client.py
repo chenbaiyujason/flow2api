@@ -719,12 +719,14 @@ class FlowClient:
             try:
                 async with AsyncSession() as session:
                     create_url = f"{base_url}/createTask"
+                    # 从配置获取任务类型
+                    task_type = config.yescaptcha_task_type
                     create_data = {
                         "clientKey": client_key,
                         "task": {
                             "websiteURL": website_url,
                             "websiteKey": website_key,
-                            "type": "RecaptchaV3TaskProxylessM1S7",
+                            "type": task_type,
                             "pageAction": page_action
                         }
                     }

@@ -207,6 +207,7 @@ class Database:
                         captcha_method TEXT DEFAULT 'browser',
                         yescaptcha_api_key TEXT DEFAULT '',
                         yescaptcha_base_url TEXT DEFAULT 'https://api.yescaptcha.com',
+                        yescaptcha_task_type TEXT DEFAULT 'RecaptchaV3TaskProxylessM1S7',
                         website_key TEXT DEFAULT '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV',
                         page_action TEXT DEFAULT 'FLOW_GENERATION',
                         browser_proxy_enabled BOOLEAN DEFAULT 0,
@@ -256,6 +257,7 @@ class Database:
                 captcha_columns_to_add = [
                     ("browser_proxy_enabled", "BOOLEAN DEFAULT 0"),
                     ("browser_proxy_url", "TEXT"),
+                    ("yescaptcha_task_type", "TEXT DEFAULT 'RecaptchaV3TaskProxylessM1S7'"),
                 ]
 
                 for col_name, col_type in captcha_columns_to_add:
@@ -454,6 +456,7 @@ class Database:
                     captcha_method TEXT DEFAULT 'browser',
                     yescaptcha_api_key TEXT DEFAULT '',
                     yescaptcha_base_url TEXT DEFAULT 'https://api.yescaptcha.com',
+                    yescaptcha_task_type TEXT DEFAULT 'RecaptchaV3TaskProxylessM1S7',
                     website_key TEXT DEFAULT '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV',
                     page_action TEXT DEFAULT 'FLOW_GENERATION',
                     browser_proxy_enabled BOOLEAN DEFAULT 0,
@@ -1029,6 +1032,7 @@ class Database:
             config.set_captcha_method(captcha_config.captcha_method)
             config.set_yescaptcha_api_key(captcha_config.yescaptcha_api_key)
             config.set_yescaptcha_base_url(captcha_config.yescaptcha_base_url)
+            config.set_yescaptcha_task_type(captcha_config.yescaptcha_task_type)
 
         # Reload batch config
         batch_config = await self.get_batch_config()
@@ -1155,6 +1159,7 @@ class Database:
         captcha_method: str = None,
         yescaptcha_api_key: str = None,
         yescaptcha_base_url: str = None,
+        yescaptcha_task_type: str = None,
         browser_proxy_enabled: bool = None,
         browser_proxy_url: str = None
     ):
@@ -1169,26 +1174,28 @@ class Database:
                 new_method = captcha_method if captcha_method is not None else current.get("captcha_method", "yescaptcha")
                 new_api_key = yescaptcha_api_key if yescaptcha_api_key is not None else current.get("yescaptcha_api_key", "")
                 new_base_url = yescaptcha_base_url if yescaptcha_base_url is not None else current.get("yescaptcha_base_url", "https://api.yescaptcha.com")
+                new_task_type = yescaptcha_task_type if yescaptcha_task_type is not None else current.get("yescaptcha_task_type", "RecaptchaV3TaskProxylessM1S7")
                 new_proxy_enabled = browser_proxy_enabled if browser_proxy_enabled is not None else current.get("browser_proxy_enabled", False)
                 new_proxy_url = browser_proxy_url if browser_proxy_url is not None else current.get("browser_proxy_url")
 
                 await db.execute("""
                     UPDATE captcha_config
-                    SET captcha_method = ?, yescaptcha_api_key = ?, yescaptcha_base_url = ?,
+                    SET captcha_method = ?, yescaptcha_api_key = ?, yescaptcha_base_url = ?, yescaptcha_task_type = ?,
                         browser_proxy_enabled = ?, browser_proxy_url = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = 1
-                """, (new_method, new_api_key, new_base_url, new_proxy_enabled, new_proxy_url))
+                """, (new_method, new_api_key, new_base_url, new_task_type, new_proxy_enabled, new_proxy_url))
             else:
                 new_method = captcha_method if captcha_method is not None else "yescaptcha"
                 new_api_key = yescaptcha_api_key if yescaptcha_api_key is not None else ""
                 new_base_url = yescaptcha_base_url if yescaptcha_base_url is not None else "https://api.yescaptcha.com"
+                new_task_type = yescaptcha_task_type if yescaptcha_task_type is not None else "RecaptchaV3TaskProxylessM1S7"
                 new_proxy_enabled = browser_proxy_enabled if browser_proxy_enabled is not None else False
                 new_proxy_url = browser_proxy_url
 
                 await db.execute("""
-                    INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, browser_proxy_enabled, browser_proxy_url)
-                    VALUES (1, ?, ?, ?, ?, ?)
-                """, (new_method, new_api_key, new_base_url, new_proxy_enabled, new_proxy_url))
+                    INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, yescaptcha_task_type, browser_proxy_enabled, browser_proxy_url)
+                    VALUES (1, ?, ?, ?, ?, ?, ?)
+                """, (new_method, new_api_key, new_base_url, new_task_type, new_proxy_enabled, new_proxy_url))
 
             await db.commit()
 
