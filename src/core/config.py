@@ -258,6 +258,28 @@ class Config:
             self._config["captcha"] = {}
         self._config["captcha"]["twocaptcha_min_score"] = min_score
 
+    @property
+    def twocaptcha_page_action(self) -> str:
+        """Get 2Captcha pageAction parameter"""
+        return self._config.get("captcha", {}).get("twocaptcha_page_action", "FLOW_GENERATION")
+
+    def set_twocaptcha_page_action(self, page_action: str):
+        """Set 2Captcha pageAction parameter"""
+        if "captcha" not in self._config:
+            self._config["captcha"] = {}
+        self._config["captcha"]["twocaptcha_page_action"] = page_action
+
+    @property
+    def twocaptcha_is_enterprise(self) -> bool:
+        """Get 2Captcha isEnterprise flag"""
+        return self._config.get("captcha", {}).get("twocaptcha_is_enterprise", True)
+
+    def set_twocaptcha_is_enterprise(self, is_enterprise: bool):
+        """Set 2Captcha isEnterprise flag"""
+        if "captcha" not in self._config:
+            self._config["captcha"] = {}
+        self._config["captcha"]["twocaptcha_is_enterprise"] = is_enterprise
+
     # Batch configuration
     @property
     def batch_max_size(self) -> int:

@@ -882,6 +882,8 @@ async def update_captcha_config(
     twocaptcha_api_key = request.get("twocaptcha_api_key")
     twocaptcha_base_url = request.get("twocaptcha_base_url")
     twocaptcha_min_score = request.get("twocaptcha_min_score")
+    twocaptcha_page_action = request.get("twocaptcha_page_action")
+    twocaptcha_is_enterprise = request.get("twocaptcha_is_enterprise", False)
     browser_proxy_enabled = request.get("browser_proxy_enabled", False)
     browser_proxy_url = request.get("browser_proxy_url", "")
 
@@ -904,6 +906,8 @@ async def update_captcha_config(
         twocaptcha_api_key=twocaptcha_api_key,
         twocaptcha_base_url=twocaptcha_base_url,
         twocaptcha_min_score=twocaptcha_min_score,
+        twocaptcha_page_action=twocaptcha_page_action,
+        twocaptcha_is_enterprise=twocaptcha_is_enterprise,
         browser_proxy_enabled=browser_proxy_enabled,
         browser_proxy_url=browser_proxy_url if browser_proxy_enabled else None
     )
@@ -926,6 +930,8 @@ async def get_captcha_config(token: str = Depends(verify_admin_token)):
         "twocaptcha_api_key": captcha_config.twocaptcha_api_key,
         "twocaptcha_base_url": captcha_config.twocaptcha_base_url,
         "twocaptcha_min_score": captcha_config.twocaptcha_min_score,
+        "twocaptcha_page_action": captcha_config.twocaptcha_page_action,
+        "twocaptcha_is_enterprise": captcha_config.twocaptcha_is_enterprise,
         "browser_proxy_enabled": captcha_config.browser_proxy_enabled,
         "browser_proxy_url": captcha_config.browser_proxy_url or ""
     }

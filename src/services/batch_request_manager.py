@@ -281,10 +281,6 @@ class BatchRequestManager:
     async def _send_video_batch(self, batch: PendingBatch):
         """发送视频批量请求 - 带URL去重和统一上传"""
         try:
-            # 获取共享的 recaptcha_token
-            recaptcha_token = await self.flow_client._get_recaptcha_token(batch.project_id) or ""
-            session_id = self.flow_client._generate_session_id()
-            
             debug_logger.log_info(
                 f"[BATCH] 发送视频批次: {batch.batch_id}, "
                 f"端点: {batch.endpoint}, 请求数: {len(batch.requests)}"
@@ -419,7 +415,11 @@ class BatchRequestManager:
                             })
                     req.request_data["referenceImages"] = reference_images
             
-            # ========== 5. 构建批量请求 ==========
+            # ========== 5. 获取 recaptcha_token (在图片上传完成后，避免token过期) ==========
+            recaptcha_token = await self.flow_client._get_recaptcha_token(batch.project_id) or ""
+            session_id = self.flow_client._generate_session_id()
+            
+            # ========== 6. 构建批量请求 ==========
             url = f"{self.flow_client.api_base_url}/video:{batch.endpoint}"
             
             json_data = {
@@ -472,10 +472,6 @@ class BatchRequestManager:
     async def _send_image_batch(self, batch: PendingBatch):
         """发送图片批量请求 - 带URL去重和统一上传"""
         try:
-            # 获取共享的 recaptcha_token
-            recaptcha_token = await self.flow_client._get_recaptcha_token(batch.project_id) or ""
-            session_id = self.flow_client._generate_session_id()
-            
             debug_logger.log_info(
                 f"[BATCH] 发送图片批次: {batch.batch_id}, "
                 f"请求数: {len(batch.requests)}"
@@ -581,7 +577,11 @@ class BatchRequestManager:
                 
                 debug_logger.log_info(f"[BATCH] 成功上传 {len(url_to_media_id)}/{len(url_to_bytes)} 张图片")
             
-            # ========== 4. 构建请求数据 (使用 mediaId) ==========
+            # ========== 4. 获取 recaptcha_token (在图片上传完成后，避免token过期) ==========
+            recaptcha_token = await self.flow_client._get_recaptcha_token(batch.project_id) or ""
+            session_id = self.flow_client._generate_session_id()
+            
+            # ========== 5. 构建请求数据 (使用 mediaId) ==========
             url = f"{self.flow_client.api_base_url}/projects/{batch.project_id}/flowMedia:batchGenerateImages"
             
             requests_data = []
@@ -614,7 +614,7 @@ class BatchRequestManager:
                 "requests": requests_data
             }
             
-            # ========== 5. 发送批量请求 ==========
+            # ========== 6. 发送批量请求 ==========
             result = await self.flow_client._make_request(
                 method="POST",
                 url=url,

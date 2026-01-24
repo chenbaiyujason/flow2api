@@ -154,6 +154,8 @@ class CaptchaConfig(BaseModel):
     twocaptcha_api_key: str = ""
     twocaptcha_base_url: str = "https://api.2captcha.com"
     twocaptcha_min_score: float = 0.3  # 2Captcha min score (0.3, 0.7, 0.9)
+    twocaptcha_page_action: str = "FLOW_GENERATION"  # 2Captcha pageAction参数
+    twocaptcha_is_enterprise: bool = True  # 2Captcha是否使用Enterprise版本
     website_key: str = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
     page_action: str = "FLOW_GENERATION"
     browser_proxy_enabled: bool = False  # 浏览器打码是否启用代理

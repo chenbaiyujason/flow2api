@@ -159,6 +159,8 @@ class Database:
             twocaptcha_api_key = ""
             twocaptcha_base_url = "https://api.2captcha.com"
             twocaptcha_min_score = 0.3
+            twocaptcha_page_action = "FLOW_GENERATION"
+            twocaptcha_is_enterprise = True
 
             if config_dict:
                 captcha_config = config_dict.get("captcha", {})
@@ -169,11 +171,13 @@ class Database:
                 twocaptcha_api_key = captcha_config.get("twocaptcha_api_key", "")
                 twocaptcha_base_url = captcha_config.get("twocaptcha_base_url", "https://api.2captcha.com")
                 twocaptcha_min_score = captcha_config.get("twocaptcha_min_score", 0.3)
+                twocaptcha_page_action = captcha_config.get("twocaptcha_page_action", "FLOW_GENERATION")
+                twocaptcha_is_enterprise = captcha_config.get("twocaptcha_is_enterprise", True)
 
             await db.execute("""
-                INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, yescaptcha_task_type, twocaptcha_api_key, twocaptcha_base_url, twocaptcha_min_score)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?)
-            """, (captcha_method, yescaptcha_api_key, yescaptcha_base_url, yescaptcha_task_type, twocaptcha_api_key, twocaptcha_base_url, twocaptcha_min_score))
+                INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, yescaptcha_task_type, twocaptcha_api_key, twocaptcha_base_url, twocaptcha_min_score, twocaptcha_page_action, twocaptcha_is_enterprise)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (captcha_method, yescaptcha_api_key, yescaptcha_base_url, yescaptcha_task_type, twocaptcha_api_key, twocaptcha_base_url, twocaptcha_min_score, twocaptcha_page_action, twocaptcha_is_enterprise))
 
     async def check_and_migrate_db(self, config_dict: dict = None):
         """Check database integrity and perform migrations if needed
@@ -216,6 +220,11 @@ class Database:
                         yescaptcha_api_key TEXT DEFAULT '',
                         yescaptcha_base_url TEXT DEFAULT 'https://api.yescaptcha.com',
                         yescaptcha_task_type TEXT DEFAULT 'RecaptchaV3TaskProxylessM1S7',
+                        twocaptcha_api_key TEXT DEFAULT '',
+                        twocaptcha_base_url TEXT DEFAULT 'https://api.2captcha.com',
+                        twocaptcha_min_score REAL DEFAULT 0.3,
+                        twocaptcha_page_action TEXT DEFAULT 'FLOW_GENERATION',
+                        twocaptcha_is_enterprise BOOLEAN DEFAULT 1,
                         website_key TEXT DEFAULT '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV',
                         page_action TEXT DEFAULT 'FLOW_GENERATION',
                         browser_proxy_enabled BOOLEAN DEFAULT 0,
@@ -269,6 +278,8 @@ class Database:
                     ("twocaptcha_api_key", "TEXT"),
                     ("twocaptcha_base_url", "TEXT DEFAULT 'https://api.2captcha.com'"),
                     ("twocaptcha_min_score", "REAL DEFAULT 0.3"),
+                    ("twocaptcha_page_action", "TEXT DEFAULT 'FLOW_GENERATION'"),
+                    ("twocaptcha_is_enterprise", "BOOLEAN DEFAULT 1"),
                 ]
 
                 for col_name, col_type in captcha_columns_to_add:
@@ -471,6 +482,8 @@ class Database:
                     twocaptcha_api_key TEXT DEFAULT '',
                     twocaptcha_base_url TEXT DEFAULT 'https://api.2captcha.com',
                     twocaptcha_min_score REAL DEFAULT 0.3,
+                    twocaptcha_page_action TEXT DEFAULT 'FLOW_GENERATION',
+                    twocaptcha_is_enterprise BOOLEAN DEFAULT 0,
                     website_key TEXT DEFAULT '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV',
                     page_action TEXT DEFAULT 'FLOW_GENERATION',
                     browser_proxy_enabled BOOLEAN DEFAULT 0,
@@ -1050,6 +1063,8 @@ class Database:
             config.set_twocaptcha_api_key(captcha_config.twocaptcha_api_key)
             config.set_twocaptcha_base_url(captcha_config.twocaptcha_base_url)
             config.set_twocaptcha_min_score(captcha_config.twocaptcha_min_score)
+            config.set_twocaptcha_page_action(captcha_config.twocaptcha_page_action)
+            config.set_twocaptcha_is_enterprise(captcha_config.twocaptcha_is_enterprise)
 
         # Reload batch config
         batch_config = await self.get_batch_config()
@@ -1180,6 +1195,8 @@ class Database:
         twocaptcha_api_key: str = None,
         twocaptcha_base_url: str = None,
         twocaptcha_min_score: float = None,
+        twocaptcha_page_action: str = None,
+        twocaptcha_is_enterprise: bool = None,
         browser_proxy_enabled: bool = None,
         browser_proxy_url: str = None
     ):
@@ -1198,6 +1215,8 @@ class Database:
                 new_twocaptcha_api_key = twocaptcha_api_key if twocaptcha_api_key is not None else current.get("twocaptcha_api_key", "")
                 new_twocaptcha_base_url = twocaptcha_base_url if twocaptcha_base_url is not None else current.get("twocaptcha_base_url", "https://api.2captcha.com")
                 new_twocaptcha_min_score = twocaptcha_min_score if twocaptcha_min_score is not None else current.get("twocaptcha_min_score", 0.3)
+                new_twocaptcha_page_action = twocaptcha_page_action if twocaptcha_page_action is not None else current.get("twocaptcha_page_action", "FLOW_GENERATION")
+                new_twocaptcha_is_enterprise = twocaptcha_is_enterprise if twocaptcha_is_enterprise is not None else current.get("twocaptcha_is_enterprise", True)
                 new_proxy_enabled = browser_proxy_enabled if browser_proxy_enabled is not None else current.get("browser_proxy_enabled", False)
                 new_proxy_url = browser_proxy_url if browser_proxy_url is not None else current.get("browser_proxy_url")
 
@@ -1205,10 +1224,12 @@ class Database:
                     UPDATE captcha_config
                     SET captcha_method = ?, yescaptcha_api_key = ?, yescaptcha_base_url = ?, yescaptcha_task_type = ?,
                         twocaptcha_api_key = ?, twocaptcha_base_url = ?, twocaptcha_min_score = ?,
+                        twocaptcha_page_action = ?, twocaptcha_is_enterprise = ?,
                         browser_proxy_enabled = ?, browser_proxy_url = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = 1
                 """, (new_method, new_api_key, new_base_url, new_task_type,
                       new_twocaptcha_api_key, new_twocaptcha_base_url, new_twocaptcha_min_score,
+                      new_twocaptcha_page_action, new_twocaptcha_is_enterprise,
                       new_proxy_enabled, new_proxy_url))
             else:
                 new_method = captcha_method if captcha_method is not None else "browser"
@@ -1218,15 +1239,19 @@ class Database:
                 new_twocaptcha_api_key = twocaptcha_api_key if twocaptcha_api_key is not None else ""
                 new_twocaptcha_base_url = twocaptcha_base_url if twocaptcha_base_url is not None else "https://api.2captcha.com"
                 new_twocaptcha_min_score = twocaptcha_min_score if twocaptcha_min_score is not None else 0.3
+                new_twocaptcha_page_action = twocaptcha_page_action if twocaptcha_page_action is not None else "FLOW_GENERATION"
+                new_twocaptcha_is_enterprise = twocaptcha_is_enterprise if twocaptcha_is_enterprise is not None else True
                 new_proxy_enabled = browser_proxy_enabled if browser_proxy_enabled is not None else False
                 new_proxy_url = browser_proxy_url
 
                 await db.execute("""
                     INSERT INTO captcha_config (id, captcha_method, yescaptcha_api_key, yescaptcha_base_url, yescaptcha_task_type,
-                        twocaptcha_api_key, twocaptcha_base_url, twocaptcha_min_score, browser_proxy_enabled, browser_proxy_url)
-                    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        twocaptcha_api_key, twocaptcha_base_url, twocaptcha_min_score, twocaptcha_page_action, twocaptcha_is_enterprise,
+                        browser_proxy_enabled, browser_proxy_url)
+                    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (new_method, new_api_key, new_base_url, new_task_type,
                       new_twocaptcha_api_key, new_twocaptcha_base_url, new_twocaptcha_min_score,
+                      new_twocaptcha_page_action, new_twocaptcha_is_enterprise,
                       new_proxy_enabled, new_proxy_url))
 
             await db.commit()

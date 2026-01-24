@@ -801,23 +801,31 @@ class FlowClient:
             website_key = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
             website_url = f"https://labs.google/fx/tools/flow/project/{project_id}"
             base_url = config.twocaptcha_base_url
-            page_action = "FLOW_GENERATION"
+            page_action = config.twocaptcha_page_action
             min_score = config.twocaptcha_min_score
+            is_enterprise = config.twocaptcha_is_enterprise
 
-            debug_logger.log_info(f"[reCAPTCHA] Platform: 2Captcha, Type: RecaptchaV3TaskProxyless (minScore: {min_score})")
+            # 根据isEnterprise选择任务类型
+            task_type = "RecaptchaV3EnterpriseTaskProxyless" if is_enterprise else "RecaptchaV3TaskProxyless"
+            debug_logger.log_info(f"[reCAPTCHA] Platform: 2Captcha, Type: {task_type} (minScore: {min_score}, pageAction: {page_action}, isEnterprise: {is_enterprise})")
 
             try:
                 async with AsyncSession() as session:
                     create_url = f"{base_url}/createTask"
+                    task_data = {
+                        "type": task_type,
+                        "websiteURL": website_url,
+                        "websiteKey": website_key,
+                        "minScore": min_score,
+                        "pageAction": page_action
+                    }
+                    # 如果是Enterprise版本，添加isEnterprise参数
+                    if is_enterprise:
+                        task_data["isEnterprise"] = True
+                    
                     create_data = {
                         "clientKey": client_key,
-                        "task": {
-                            "type": "RecaptchaV3TaskProxyless",
-                            "websiteURL": website_url,
-                            "websiteKey": website_key,
-                            "minScore": min_score,
-                            "pageAction": page_action
-                        }
+                        "task": task_data
                     }
 
                     result = await session.post(create_url, json=create_data, impersonate="chrome110")
