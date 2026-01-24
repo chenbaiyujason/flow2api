@@ -143,7 +143,7 @@ class BrowserCaptchaService:
             debug_logger.log_error(f"[BrowserCaptcha] ❌ 浏览器启动失败: {str(e)}")
             raise
 
-    async def get_token(self, project_id: str) -> Optional[str]:
+    async def get_token(self, project_id: str, action: str = "IMAGE_GENERATION") -> Optional[str]:
         """获取 reCAPTCHA token
 
         Args:
@@ -226,9 +226,10 @@ class BrowserCaptchaService:
             await page.wait_for_timeout(1000)
 
             # 执行reCAPTCHA并获取token
-            debug_logger.log_info("[BrowserCaptcha] 执行reCAPTCHA验证...")
+            debug_logger.log_info(f"[BrowserCaptcha] 执行reCAPTCHA验证 (action={action})...")
             token = await page.evaluate("""
-                async (websiteKey) => {
+                async (params) => {
+                    const { websiteKey, action } = params;
                     try {
                         if (!window.grecaptcha) {
                             console.error('[BrowserCaptcha] window.grecaptcha 不存在');
@@ -244,7 +245,7 @@ class BrowserCaptchaService:
                         await new Promise((resolve, reject) => {
                             const timeout = setTimeout(() => {
                                 reject(new Error('reCAPTCHA加载超时'));
-                            }, 150000);
+                            }, 15000);
 
                             if (window.grecaptcha && window.grecaptcha.ready) {
                                 window.grecaptcha.ready(() => {
@@ -259,7 +260,7 @@ class BrowserCaptchaService:
 
                         // 执行reCAPTCHA v3
                         const token = await window.grecaptcha.execute(websiteKey, {
-                            action: 'FLOW_GENERATION'
+                            action: action
                         });
 
                         return token;
@@ -268,7 +269,7 @@ class BrowserCaptchaService:
                         return null;
                     }
                 }
-            """, self.website_key)
+            """, {"websiteKey": self.website_key, "action": action})
 
             duration_ms = (time.time() - start_time) * 1000
 

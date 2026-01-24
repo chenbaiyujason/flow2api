@@ -392,7 +392,7 @@ class FlowClient:
         url = f"{self.api_base_url}/projects/{project_id}/flowMedia:batchGenerateImages"
 
         # 获取 reCAPTCHA token
-        recaptcha_token = await self._get_recaptcha_token(project_id) or ""
+        recaptcha_token = await self._get_recaptcha_token(project_id, action="IMAGE_GENERATION") or ""
         session_id = self._generate_session_id()
 
         # 构建请求
@@ -462,7 +462,7 @@ class FlowClient:
         url = f"{self.api_base_url}/video:batchAsyncGenerateVideoText"
 
         # 获取 reCAPTCHA token
-        recaptcha_token = await self._get_recaptcha_token(project_id) or ""
+        recaptcha_token = await self._get_recaptcha_token(project_id, action="VIDEO_GENERATION") or ""
         session_id = self._generate_session_id()
         scene_id = str(uuid.uuid4())
 
@@ -524,7 +524,7 @@ class FlowClient:
         url = f"{self.api_base_url}/video:batchAsyncGenerateVideoReferenceImages"
 
         # 获取 reCAPTCHA token
-        recaptcha_token = await self._get_recaptcha_token(project_id) or ""
+        recaptcha_token = await self._get_recaptcha_token(project_id, action="VIDEO_GENERATION") or ""
         session_id = self._generate_session_id()
         scene_id = str(uuid.uuid4())
 
@@ -589,7 +589,7 @@ class FlowClient:
         url = f"{self.api_base_url}/video:batchAsyncGenerateVideoStartAndEndImage"
 
         # 获取 reCAPTCHA token
-        recaptcha_token = await self._get_recaptcha_token(project_id) or ""
+        recaptcha_token = await self._get_recaptcha_token(project_id, action="VIDEO_GENERATION") or ""
         session_id = self._generate_session_id()
         scene_id = str(uuid.uuid4())
 
@@ -657,7 +657,7 @@ class FlowClient:
         url = f"{self.api_base_url}/video:batchAsyncGenerateVideoStartImage"
 
         # 获取 reCAPTCHA token
-        recaptcha_token = await self._get_recaptcha_token(project_id) or ""
+        recaptcha_token = await self._get_recaptcha_token(project_id, action="VIDEO_GENERATION") or ""
         session_id = self._generate_session_id()
         scene_id = str(uuid.uuid4())
 
@@ -765,8 +765,15 @@ class FlowClient:
         """生成sceneId: UUID"""
         return str(uuid.uuid4())
 
-    async def _get_recaptcha_token(self, project_id: str) -> Optional[str]:
-        """获取reCAPTCHA token - 支持多种方式"""
+    async def _get_recaptcha_token(self, project_id: str, action: str = "IMAGE_GENERATION") -> Optional[str]:
+        """获取reCAPTCHA token - 支持多种方式
+        
+        Args:
+            project_id: 项目ID
+            action: reCAPTCHA action类型
+                - IMAGE_GENERATION: 图片生成 (默认)
+                - VIDEO_GENERATION: 视频生成
+        """
         captcha_method = config.captcha_method
 
         # 恒定浏览器打码
@@ -775,7 +782,7 @@ class FlowClient:
                 from .browser_captcha_personal import BrowserCaptchaService
                 service = await BrowserCaptchaService.get_instance(self.proxy_manager)
                 debug_logger.log_info("[reCAPTCHA] Platform: Browser (Personal), Type: reCAPTCHA v3")
-                token = await service.get_token(project_id)
+                token = await service.get_token(project_id, action)
                 return token
             except Exception as e:
                 debug_logger.log_error(f"[reCAPTCHA Browser Personal] error: {str(e)}")
@@ -786,7 +793,7 @@ class FlowClient:
                 from .browser_captcha import BrowserCaptchaService
                 service = await BrowserCaptchaService.get_instance(self.proxy_manager)
                 debug_logger.log_info("[reCAPTCHA] Platform: Browser (Headless), Type: reCAPTCHA v3")
-                token = await service.get_token(project_id)
+                token = await service.get_token(project_id, action)
                 return token
             except Exception as e:
                 debug_logger.log_error(f"[reCAPTCHA Browser Headless] error: {str(e)}")
@@ -801,7 +808,7 @@ class FlowClient:
             website_key = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
             website_url = f"https://labs.google/fx/tools/flow/project/{project_id}"
             base_url = config.twocaptcha_base_url
-            page_action = config.twocaptcha_page_action
+            page_action = action
             min_score = config.twocaptcha_min_score
             is_enterprise = config.twocaptcha_is_enterprise
 
@@ -887,7 +894,7 @@ class FlowClient:
             website_key = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV"
             website_url = f"https://labs.google/fx/tools/flow/project/{project_id}"
             base_url = config.yescaptcha_base_url
-            page_action = "FLOW_GENERATION"
+            page_action = action
             task_type = config.yescaptcha_task_type
 
             debug_logger.log_info(f"[reCAPTCHA] Platform: YesCaptcha, Type: {task_type}")

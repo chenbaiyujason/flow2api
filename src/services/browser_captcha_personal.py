@@ -100,7 +100,7 @@ class BrowserCaptchaService:
             debug_logger.log_error(f"[BrowserCaptcha] ❌ 浏览器启动失败: {str(e)}")
             raise
 
-    async def get_token(self, project_id: str) -> Optional[str]:
+    async def get_token(self, project_id: str, action: str = "IMAGE_GENERATION") -> Optional[str]:
         """获取 reCAPTCHA token"""
         # 确保浏览器已启动
         if not self._initialized or not self.context:
@@ -149,7 +149,7 @@ class BrowserCaptchaService:
             token = await page.evaluate(f"""
                 async () => {{
                     try {{
-                        return await window.grecaptcha.execute('{self.website_key}', {{ action: 'FLOW_GENERATION' }});
+                        return await window.grecaptcha.execute('{self.website_key}', {{ action: '{action}' }});
                     }} catch (e) {{ return null; }}
                 }}
             """)
