@@ -22,6 +22,20 @@ class FlowClient:
         # 缓存每个账号的 User-Agent
         self._user_agent_cache = {}
 
+        # Default "real browser" headers (Android Chrome style) to reduce upstream 4xx/5xx instability.
+        self._default_client_headers = {
+            "sec-ch-ua-mobile": "?1",
+            "sec-ch-ua-platform": "\"Android\"",
+            "sec-fetch-dest": "empty",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "cross-site",
+            "x-browser-channel": "stable",
+            "x-browser-copyright": "Copyright 2026 Google LLC. All Rights reserved.",
+            "x-browser-validation": "UujAs0GAwdnCJ9nvrswZ+O+oco0=",
+            "x-browser-year": "2026",
+            "x-client-data": "CJS2yQEIpLbJAQipncoBCNj9ygEIlKHLAQiFoM0BGP6lzwE="
+        }
+
     def _generate_user_agent(self, account_id: str | None = None) -> str:
         """基于账号ID生成固定的 User-Agent
 
@@ -103,7 +117,8 @@ class FlowClient:
         use_st: bool = False,
         st_token: Optional[str] = None,
         use_at: bool = False,
-        at_token: Optional[str] = None
+        at_token: Optional[str] = None,
+        timeout: Optional[int] = None
     ) -> Dict[str, Any]:
         """统一HTTP请求处理
 
@@ -116,8 +131,10 @@ class FlowClient:
             st_token: Session Token
             use_at: 是否使用AT认证 (Bearer方式)
             at_token: Access Token
+            timeout: 自定义超时时间(秒)，不传则使用默认值
         """
         proxy_url = await self.proxy_manager.get_proxy_url()
+        request_timeout = timeout or self.timeout
 
         if headers is None:
             headers = {}
@@ -143,6 +160,10 @@ class FlowClient:
             "User-Agent": self._generate_user_agent(account_id)
         })
 
+        # Add default Chromium/Android client headers (do not override explicitly provided values).
+        for key, value in self._default_client_headers.items():
+            headers.setdefault(key, value)
+
         # Log request
         if config.debug_enabled:
             debug_logger.log_request(
@@ -162,7 +183,7 @@ class FlowClient:
                         url,
                         headers=headers,
                         proxy=proxy_url,
-                        timeout=self.timeout,
+                        timeout=request_timeout,
                         impersonate="chrome110"
                     )
                 else:  # POST
@@ -171,7 +192,7 @@ class FlowClient:
                         headers=headers,
                         json=json_data,
                         proxy=proxy_url,
-                        timeout=self.timeout,
+                        timeout=request_timeout,
                         impersonate="chrome110"
                     )
 
@@ -186,7 +207,34 @@ class FlowClient:
                         duration_ms=duration_ms
                     )
 
-                response.raise_for_status()
+                # 检查HTTP错误
+                if response.status_code >= 400:
+                    # 解析错误响应
+                    error_reason = f"HTTP Error {response.status_code}"
+                    try:
+                        error_body = response.json()
+                        # 提取 Google API 错误格式中的 reason
+                        if "error" in error_body:
+                            error_info = error_body["error"]
+                            error_message = error_info.get("message", "")
+                            # 从 details 中提取 reason
+                            details = error_info.get("details", [])
+                            for detail in details:
+                                if detail.get("reason"):
+                                    error_reason = detail.get("reason")
+                                    break
+                            if error_message:
+                                error_reason = f"{error_reason}: {error_message}"
+                    except:
+                        error_reason = f"HTTP Error {response.status_code}: {response.text[:200]}"
+                    
+                    # 失败时输出请求体和错误内容到控制台
+                    debug_logger.log_error(f"[API FAILED] URL: {url}")
+                    debug_logger.log_error(f"[API FAILED] Request Body: {json_data}")
+                    debug_logger.log_error(f"[API FAILED] Response: {response.text}")
+                    
+                    raise Exception(error_reason)
+
                 return response.json()
 
         except Exception as e:
@@ -305,6 +353,62 @@ class FlowClient:
 
     # ========== 图片上传 (使用AT) ==========
 
+    def _detect_image_mime_type(self, image_bytes: bytes) -> str:
+        """通过文件头 magic bytes 检测图片 MIME 类型
+
+        Args:
+            image_bytes: 图片字节数据
+
+        Returns:
+            MIME 类型字符串，默认 image/jpeg
+        """
+        if len(image_bytes) < 12:
+            return "image/jpeg"
+
+        # WebP: RIFF....WEBP
+        if image_bytes[:4] == b'RIFF' and image_bytes[8:12] == b'WEBP':
+            return "image/webp"
+        # PNG: 89 50 4E 47
+        if image_bytes[:4] == b'\x89PNG':
+            return "image/png"
+        # JPEG: FF D8 FF
+        if image_bytes[:3] == b'\xff\xd8\xff':
+            return "image/jpeg"
+        # GIF: GIF87a 或 GIF89a
+        if image_bytes[:6] in (b'GIF87a', b'GIF89a'):
+            return "image/gif"
+        # BMP: BM
+        if image_bytes[:2] == b'BM':
+            return "image/bmp"
+        # JPEG 2000: 00 00 00 0C 6A 50
+        if image_bytes[:6] == b'\x00\x00\x00\x0cjP':
+            return "image/jp2"
+
+        return "image/jpeg"
+
+    def _convert_to_jpeg(self, image_bytes: bytes) -> bytes:
+        """将图片转换为 JPEG 格式
+
+        Args:
+            image_bytes: 原始图片字节数据
+
+        Returns:
+            JPEG 格式的图片字节数据
+        """
+        from io import BytesIO
+        from PIL import Image
+
+        img = Image.open(BytesIO(image_bytes))
+        # 如果有透明通道，转换为 RGB
+        if img.mode in ('RGBA', 'LA', 'P'):
+            img = img.convert('RGB')
+        
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=95)
+        return output.getvalue()
+
+    # ========== 图片上传 (使用AT) ==========
+
     async def upload_image(
         self,
         at: str,
@@ -327,6 +431,9 @@ class FlowClient:
         if aspect_ratio.startswith("VIDEO_"):
             aspect_ratio = aspect_ratio.replace("VIDEO_", "IMAGE_")
 
+        # 自动检测图片 MIME 类型
+        mime_type = self._detect_image_mime_type(image_bytes)
+
         # 编码为base64 (去掉前缀)
         image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
@@ -334,7 +441,7 @@ class FlowClient:
         json_data = {
             "imageInput": {
                 "rawImageBytes": image_base64,
-                "mimeType": "image/jpeg",
+                "mimeType": mime_type,
                 "isUserUploaded": True,
                 "aspectRatio": aspect_ratio
             },
@@ -398,9 +505,12 @@ class FlowClient:
         # 构建请求
         request_data = {
             "clientContext": {
-                "recaptchaToken": recaptcha_token,
-                "projectId": project_id,
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+                },
                 "sessionId": session_id,
+                "projectId": project_id,
                 "tool": "PINHOLE"
             },
             "seed": random.randint(1, 99999),
@@ -412,8 +522,13 @@ class FlowClient:
 
         json_data = {
             "clientContext": {
-                "recaptchaToken": recaptcha_token,
-                "sessionId": session_id
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+                },
+                "sessionId": session_id,
+                "projectId": project_id,
+                "tool": "PINHOLE"
             },
             "requests": [request_data]
         }
@@ -427,6 +542,57 @@ class FlowClient:
         )
 
         return result
+
+    async def upsample_image(
+        self,
+        at: str,
+        project_id: str,
+        media_id: str,
+        target_resolution: str = "UPSAMPLE_IMAGE_RESOLUTION_4K"
+    ) -> str:
+        """放大图片到 2K/4K
+
+        Args:
+            at: Access Token
+            project_id: 项目ID
+            media_id: 图片的 mediaId (从 batchGenerateImages 返回的 media[0]["name"])
+            target_resolution: UPSAMPLE_IMAGE_RESOLUTION_2K 或 UPSAMPLE_IMAGE_RESOLUTION_4K
+
+        Returns:
+            base64 编码的图片数据
+        """
+        url = f"{self.api_base_url}/flow/upsampleImage"
+
+        # 获取 reCAPTCHA token - 使用 VIDEO_GENERATION action
+        recaptcha_token = await self._get_recaptcha_token(project_id, action="VIDEO_GENERATION") or ""
+        session_id = self._generate_session_id()
+
+        json_data = {
+            "mediaId": media_id,
+            "targetResolution": target_resolution,
+            "clientContext": {
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+                },
+                "sessionId": session_id,
+                "projectId": project_id,
+                "tool": "PINHOLE"
+            }
+        }
+
+        # 4K/2K 放大使用专用超时，因为返回的 base64 数据量很大
+        result = await self._make_request(
+            method="POST",
+            url=url,
+            json_data=json_data,
+            use_at=True,
+            at_token=at,
+            timeout=config.upsample_timeout
+        )
+
+        # 返回 base64 编码的图片
+        return result.get("encodedImage", "")
 
     # ========== 视频生成 (使用AT) - 异步返回 ==========
 
@@ -468,7 +634,10 @@ class FlowClient:
 
         json_data = {
             "clientContext": {
-                "recaptchaToken": recaptcha_token,
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+                },
                 "sessionId": session_id,
                 "projectId": project_id,
                 "tool": "PINHOLE",
@@ -530,7 +699,10 @@ class FlowClient:
 
         json_data = {
             "clientContext": {
-                "recaptchaToken": recaptcha_token,
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+                },
                 "sessionId": session_id,
                 "projectId": project_id,
                 "tool": "PINHOLE",
@@ -595,7 +767,10 @@ class FlowClient:
 
         json_data = {
             "clientContext": {
-                "recaptchaToken": recaptcha_token,
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+                },
                 "sessionId": session_id,
                 "projectId": project_id,
                 "tool": "PINHOLE",
@@ -663,7 +838,10 @@ class FlowClient:
 
         json_data = {
             "clientContext": {
-                "recaptchaToken": recaptcha_token,
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+                },
                 "sessionId": session_id,
                 "projectId": project_id,
                 "tool": "PINHOLE",
